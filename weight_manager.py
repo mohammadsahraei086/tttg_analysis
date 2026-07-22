@@ -1,8 +1,9 @@
 import numpy as np
 
 class WeightManager:
-    def __init__(self):
-        self.run2_luminosity = 138
+    def __init__(self, n_primary):
+        self.phase2_luminosity = 3000
+        self.n_primary = n_primary
     
     def get_weights(self, events, *weights, **kwargs):
         total_weight = np.prod([])
@@ -15,7 +16,7 @@ class WeightManager:
         return events.metadata["xsec"]*1000
     
     def luminosity(self, events):
-        return self.run2_luminosity
+        return self.phase2_luminosity
     
     def sum_genweight(self, events):
-        return 1./events["n_primary"]
+        return 1./self.n_primary
