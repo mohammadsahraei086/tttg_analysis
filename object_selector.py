@@ -6,7 +6,7 @@ class ObjectSelector:
     def __init__(self, events):
         self.events = events     
         
-    def selected_electrons(self, channel="1-lep"):
+    def selected_electrons(self, ID="tight", channel="1-lep"):
 
         electrons = self.events.Electron
         if channel == "1-lep":
@@ -16,9 +16,12 @@ class ObjectSelector:
         else:
             pt_mask = ak.ones_like(electrons.PT)
 
-        eta_mask = (electrons.Eta < 0.3) & ((electrons.Eta < 1.4442) | (electrons.Eta> 1.566))
+        eta_mask = (abs(electrons.Eta) < 0.3) & ((abs(electrons.Eta) < 1.4442) | (abs(electrons.Eta) > 1.566))
  
-        iso_mask = electrons.IsolationVarRhoCorr < 0.15      # To be checked
+        if ID == "tight":
+            iso_mask = electrons.IsolationVarRhoCorr < 0.15      # To be checked
+        else:
+            iso_mask = electrons.IsolationVarRhoCorr < 0.25
         
         selected_electrons = electrons[pt_mask & iso_mask & eta_mask]
         selected_electrons = ak.with_field(selected_electrons, "e", "flavor")
@@ -29,7 +32,7 @@ class ObjectSelector:
         
         return selected_electrons
     
-    def selected_muons(self, channel="1-lep"):
+    def selected_muons(self, ID="tight", channel="1-lep"):
         
         muons = ak.with_name(self.events.MuonTight, name='PtEtaPhiMLorentzVector')
         if channel == "1-lep":
@@ -39,9 +42,12 @@ class ObjectSelector:
         else:
             pt_mask = ak.ones_like(muons.PT)
 
-        eta_mask = muons.Eta < 2.8 
+        eta_mask = abs(muons.Eta) < 2.8 
 
-        iso_mask = muons.IsolationVarRhoCorr < 0.15 # To be checked
+        if ID == "tight":
+            iso_mask = muons.IsolationVarRhoCorr < 0.15 # To be checked
+        else:
+            iso_mask = muons.IsolationVarRhoCorr < 0.25 # To be checked
         
         selected_muons = muons[pt_mask & iso_mask & eta_mask]
         selected_muons = ak.with_field(selected_muons, "mu", "flavor")
@@ -63,7 +69,7 @@ class ObjectSelector:
     
     def selected_b_jets(self, jets, inverse=False):
         
-        eta_mask = jets.Eta <= 2.5 # To be checked
+        eta_mask = abs(jets.Eta) <= 2.5 # To be checked
         tag_mask = (jets.BTag == 2) | (jets.BTag == 3) | (jets.BTag == 6) | (jets.BTag == 7)
         btag_mask = eta_mask & tag_mask
         if inverse:
@@ -77,12 +83,20 @@ class ObjectSelector:
         
         self.events["GoodElectrons"] = self.selected_electrons(channel)
         self.events["GoodMuons"] = self.selected_muons(channel)
+        self.events["LooseElectrons"] = self.selected_electrons(channel, ID="loose")
+        self.events["LooseMuons"] = self.selected_muons(channel, ID="loose")
         self.events["GoodLeptons"] = ak.with_name(ak.concatenate((self.events["GoodElectrons"], self.events["GoodMuons"]), axis=1,
                                                   behavior = vector.behavior),
                                                   name='PtEtaPhiMLorentzVector'
                                                  )
+        self.events["LooseLeptons"] = ak.with_name(ak.concatenate((self.events["LooseElectrons"], self.events["LooseMuons"]), axis=1,
+                                                  behavior = vector.behavior),
+                                                  name='PtEtaPhiMLorentzVector'
+                                                 )
         arg = ak.argsort(self.events.GoodLeptons.PT, ascending=False)
+        arg_loose = ak.argsort(self.events.LooseLeptons.PT, ascending=False)
         self.events["GoodLeptons"] = self.events["GoodLeptons"][arg]
+        self.events["LooseLeptons"] = self.events["LooseLeptons"][arg_loose]
         self.events["GoodJets"] = self.selected_jets(self.events.GoodLeptons)
         self.events["GoodBJets"] = self.selected_b_jets(self.events.GoodJets)
         self.events["GoodNotBJets"] = self.selected_b_jets(self.events.GoodJets, inverse=True)
@@ -92,6 +106,7 @@ class ObjectSelector:
         self.events["nGoodElectrons"] = ak.num(self.events.GoodElectrons)
         self.events["nGoodMuons"] = ak.num(self.events.GoodMuons)
         self.events["nGoodLeptons"] = ak.num(self.events.GoodLeptons)
+        self.events["nLooseLeptons"] = ak.num(self.events.LooseLeptons)
         self.events["nGoodJets"] = ak.num(self.events.GoodJets)
         self.events["nGoodBJets"] = ak.num(self.events.GoodBJets)
         self.events["nGoodNotBJets"] = ak.num(self.events.GoodNotBJets)

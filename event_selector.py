@@ -15,10 +15,11 @@ class EventSelector:
 
         return self._selection("trigger")
     
-    def select_n_lep_events(self, channel="1-lep"):
+    def select_n_lep_events(self, cat="noEFT"):
         selection = PackedSelection()
-        selection.add(channel, self.events.nGoodLeptons == int(channel[0]))
-        nlep_events = self.events[selection.all(channel)]
+        selection.add("nlep=1", (self.events.nGoodLeptons == 1) & (self.events.nLooseLeptons == 1))
+        nlep_events = self.events[selection.all("nlep=1")]
+        
         
         return nlep_events
 
@@ -81,21 +82,23 @@ class EventSelector:
     
         return nu_p4
 
-    def define_variables_before_selection(self, events, channel="1-lep"):
+    def define_variables_before_selection(self, events, cat="noEFT"):
         
         events["HT_Jets"] = ak.sum(events.Jet.pt, axis=1)
         events["HT_GoodJets"] = ak.sum(events.GoodJets.pt, axis=1)
 
-    def define_variables_after_selection(self, events, channel="1-lep"):
+    def define_variables_after_selection(self, events, cat="noEFT"):
         
         events["W_T"] = np.sqrt(2*events.GoodLeptons.PT*events.MissingET.MET*(1-np.cos(events.GoodLeptons.delta_phi(events.MissingET))))
         events["neutrino"] = self.calculateNu4vec(events.GoodLeptons, events.MissingET)
         events["W"] = events.GoodLeptons.add(events.neutrino)
         events["top"] = events.W.add(events.GoodBJets[:,0])
         events["T"] = events.top.add(events.GoodNotBJets[:, 0])
+        events["S_T"] = ak.sum(events.GoodJets.pt, axis=1) + ak.sum(events.GoodLeptons.pt, axis=1) + events.MissingET
+        events["s_hat"] = 
         
         
-    def select_good_events(self, channel="1-lep"):
+    def select_good_events(self, cat="noEFT"):
         selection = PackedSelection()
         cutflow = {}
         cutflow["primary"] = len(self.events)
