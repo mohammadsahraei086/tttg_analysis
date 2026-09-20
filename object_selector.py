@@ -73,11 +73,11 @@ class ObjectSelector:
         tag_mask = (jets.BTag == 2) | (jets.BTag == 3) | (jets.BTag == 6) | (jets.BTag == 7)
         btag_mask = eta_mask & tag_mask
         if inverse:
-            selected_b_jets = jets[~btag_mask]
+            selected = jets[~tag_mask]
         else:
-            selected_b_jets = jets[btag_mask]
+            selected = jets[btag_mask]
         
-        return selected_b_jets
+        return selected
     
     def select_good_objects(self, channel = "1-lep"):
         

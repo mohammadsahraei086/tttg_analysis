@@ -72,20 +72,17 @@ class EventSelector:
             behavior=vector.behavior
         )
     
-        
-        # pt = MET_pt
-        # phi = MET_phi
-        # theta = np.arctan2(pt, pz_nu)
-        # eta = -np.log(np.tan(theta / 2))
-        # m = np.sqrt(np.maximum(E_nu**2 - (MET_px**2 + MET_py**2 + pz_nu**2), 0))
-        # nu_p4 = ak.zip({"pt": pt, "eta": eta, "phi": phi, "mass": m},with_name="PtEtaPhiMLorentzVector")
-    
         return nu_p4
 
     def define_variables_before_selection(self, events, cat="noEFT"):
         
         events["HT_Jets"] = ak.sum(events.Jet.pt, axis=1)
         events["HT_GoodJets"] = ak.sum(events.GoodJets.pt, axis=1)
+        events["S_T"] = ak.sum(events.GoodJets.pt, axis=1) + ak.sum(events.GoodLeptons.pt, axis=1) + events.MissingET.MET
+        if ak.any(events.Event.X1*events.Event.X2, axis=0) == 0:
+            raise ValueError("Center of Mass is energy is zero")
+        else:
+            events["s_hat"] = np.sqrt(events.Event.X1*events.Event.X2)*14000
 
     def define_variables_after_selection(self, events, cat="noEFT"):
         
@@ -94,78 +91,51 @@ class EventSelector:
         events["W"] = events.GoodLeptons.add(events.neutrino)
         events["top"] = events.W.add(events.GoodBJets[:,0])
         events["T"] = events.top.add(events.GoodNotBJets[:, 0])
-        events["S_T"] = ak.sum(events.GoodJets.pt, axis=1) + ak.sum(events.GoodLeptons.pt, axis=1) + events.MissingET
-        events["s_hat"] = 
-        
         
     def select_good_events(self, cat="noEFT"):
         selection = PackedSelection()
         cutflow = {}
-        cutflow["primary"] = len(self.events)
-        selected_events = self.select_n_lep_events(channel)
-        cutflow[channel] = len(selected_events)
-        self.define_variables_before_selection(selected_events, channel)
+        cutflow["nevents"] = {}
+        cutflow["yield"] = {}
+        weight = (self.events.metadata["xsec"] * 3000)/self.events.metadata["nevents"]
+        cutflow["yield"]["primary"] = len(self.events) * weight
+        cutflow["nevents"]["primary"] = len(self.events)
         
-        if channel == "1-lep":
-            
-            selection.add("nJet", selected_events.nGoodJets >= 6)
-            selection.add("nBJet", selected_events.nGoodBJets >= 3)
-            selection.add("nNotBJet", selected_events.nGoodNotBJets >= 1)
-            selection.add("HT_jets",  selected_events.HT_Jets > 600) # 
-            selection.add("MET", selected_events.MissingET.MET >= 30)
+        selected_events = self.select_n_lep_events(cat)
+        cutflow["nevents"]["nlep=1"] = len(selected_events)
+        cutflow["yield"]["nlep=1"] = len(selected_events) * weight
+        self.define_variables_before_selection(selected_events, cat)
 
-            mask = ak.Array([True] * len(selected_events))
-            for name in selection.names:
-                new_mask = selection.all(name)
-                cutflow[name] = ak.sum(mask & new_mask)
-                mask = mask & new_mask 
+        selection.add("MET", selected_events.MissingET.MET >= 30)
+        selection.add("nJet", selected_events.nGoodJets >= 8)
+        selection.add("nBJet", selected_events.nGoodBJets >= 2)
+        selection.add("nNotBJet", selected_events.nGoodNotBJets >= 1)
+        # selection.add("HT_jets",  selected_events.HT_Jets > 600) # 
 
-            selected_events = selected_events[selection.all("nJet", "nBJet", "nNotBJet", "HT_jets", "MET")]
-
-        elif channel == "2-lep":
-            selection.add("nJet", selected_events.nGoodJets >= 5)
-            selection.add("nBJet", selected_events.nGoodBJets >= 3)
-            selection.add("HT", ak.sum(selected_events.GoodJets.pt, axis=1) > 500)
-            selection.add("MET", selected_events.MissingET.MET >= 30)
-
-            mask_flavor = selected_events.GoodLeptons[:, 0].flavor == selected_events.GoodLeptons[:, 1]
-            mask_charge = (selected_events.GoodLeptons[:, 0].charge + selected_events.GoodLeptons[:, 1].charge) == 0
-            mask_invMass = ((selected_events.GoodLeptons[:, 0] + selected_events.GoodLeptons[:, 1]).mass - 91.1876) <= 15
-            selection.add("lepInvMass", ~(mask_flavor & mask_charge & mask_invMass)) 
-
-            mask = ak.Array([True] * len(selected_events))
-            for name in selection.names:
-                new_mask = selection.all(name)
-                cutflow[name] = ak.sum(mask & new_mask)
-                mask = mask & new_mask 
-
-            selected_events = selected_events[selection.all("nJet","nBJet", "HT", "MET", "lepInvMass")]
-
+        mask = ak.Array([True] * len(selected_events))
+        for name in selection.names:
+            new_mask = selection.all(name)
+            cutflow["yield"][name] = ak.sum(mask & new_mask)*weight
+            cutflow["nevents"][name] = ak.sum(mask & new_mask)
+            mask = mask & new_mask 
+        
+        if "Signal_" in self.events.metadata["dataset"]:
+            if cat == "noEFT":
+                selected_events = selected_events[selection.all("MET", "nJet", "nBJet", "nNotBJet")]
+            elif cat == "sEFT":
+                selection.add("s<L", selected_events.S_T < 5000)
+                selected_events = selected_events[selection.all("MET", "nJet", "nBJet", "nNotBJet", "s<L")]
+                cutflow["yield"]["s<l"] = len(selected_events)*weight
+                cutflow["nevents"]["s<l"] = len(selected_events)
+            else:
+                selection.add("s_hat<L", selected_events.s_hat < 5000)
+                selected_events = selected_events[selection.all("MET", "nJet", "nBJet", "nNotBJet", "s_hat<L")]
+                cutflow["yield"]["s_hat<l"] = len(selected_events)*weight
+                cutflow["nevents"]["s_hat<l"] = len(selected_events)
         else:
-            selection.add("nJet", selected_events.nGoodJets >= 4)
-            selection.add("nBJet", selected_events.nGoodBJets >= 3)
-            selection.add("MET", selected_events.MissingET.MET >= 40)
+            selected_events = selected_events[selection.all("MET", "nJet", "nBJet", "nNotBJet")]
+                
 
-            mask = ak.Array([True] * len(selected_events))
-            for name in selection.names:
-                new_mask = selection.all(name)
-                cutflow[name] = ak.sum(mask & new_mask)
-                mask = mask & new_mask 
-
-            selected_events = selected_events[selection.all("nJet","nBJet", "MET")]
-
-        self.define_variables_after_selection(selected_events, channel)
+        self.define_variables_after_selection(selected_events, cat)
                             
         return selected_events, cutflow
-
-
-        # selection.add("leadingLepPT", selected_events.GoodLeptons[:, 0].pt > 25)
-        #     selection.add("OCLep", (selected_events.GoodLeptons[:, 0].charge + selected_events.GoodLeptons[:, 1].charge) == 0)
-        #     selection.add("lepInvariantMass", (selected_events.GoodLeptons[:, 0] + selected_events.GoodLeptons[:, 1]).mass > 20)
-        #     selection.add("onePhoton", selected_events.nGoodPhotons == 1)
-        #     selection.add("atLeastOneBJet", selected_events.nGoodBJets >= 1)
-    
-        #     # Add selection for different channels
-        #     selection.add("emu", selected_events.GoodLeptons.flavor[:, 0] != selected_events.GoodLeptons.flavor[:, 1])
-        #     selection.add("ee", (selected_events.GoodLeptons.flavor[:, 0] == "e") & (selected_events.GoodLeptons.flavor[:, 1]=="e"))
-        #     selection.add("mumu", (selected_events.GoodLeptons.flavor[:, 0] == "mu") & (selected_events.GoodLeptons.flavor[:, 1]=="mu"))

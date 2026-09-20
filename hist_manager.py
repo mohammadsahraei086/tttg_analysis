@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 from axis_selection import *
 
 from weight_manager import WeightManager
+from weight_variations import VARIATIONS
 
 @dataclass
 class Axis:
@@ -27,12 +28,29 @@ class Axis:
         raise NotImplementedError(f"Provide a function parameter when creating Axis {self.name}")
 
 class Histogram:
+    # Category label used for the un-varied histogram. Kept distinct from
+    # the "MUF=1.0_MUR=1.0_PDF=247000" entry in VARIATIONS so the plain
+    # nominal weight (no ratio applied) is always available as a cross-check
+    # against that variation, which should come out identical.
+    NOMINAL_LABEL = "nominal"
+    
     def __init__(self,name, axes:List[Axis], weights=None):
         self.name = name
         self.axes = axes
+        # variations only make sense for weighted histograms
+        self.apply_variations = apply_variations and weights is not None
         hist_axis = []
         for axis in self.axes:
             hist_axis.append(self.get_hist_axis(axis))
+        if self.apply_variations:
+            hist_axis.append(
+                hist.axis.StrCategory(
+                    [self.NOMINAL_LABEL] + VARIATIONS,
+                    name="variation",
+                    label="Scale/PDF systematic variation",
+                    growth=False,
+                )
+            )
         self.weights = weights
         self.histogram = hist.Hist(*hist_axis, name=name, storage="weight")
 
@@ -77,16 +95,34 @@ class Histogram:
                 ax.bins, name=ax.name, label=ax.label, growth=ax.growth
             )
 
-    def fill(self, events, n_primary):
+    def fill(self, events):
         ax = {}
         for axis in self.axes:
             ax[axis.name] = axis.get_variable(events)
-        if self.weights is not None:
-            weight_manager = WeightManager(n_primary)
+
+        if self.weights is None:
+            self.histogram.fill(**ax)
+            return
+
+        weight_manager = WeightManager()
+
+        if not self.apply_variations:
             weight = weight_manager.get_weights(events, *self.weights)
             self.histogram.fill(**ax, weight=weight)
-        else:
-            self.histogram.fill(**ax)
+            return
+
+        # nominal: usual xsec*luminosity/sum_genweight normalization, no
+        # scale/PDF reweighting applied
+        nominal_weight = weight_manager.get_weights(events, *self.weights)
+        self.histogram.fill(**ax, variation=self.NOMINAL_LABEL, weight=nominal_weight)
+
+        # each scale/PDF variation: same normalization, reweighted by the
+        # ratio of that variation's weight to the nominal weight
+        for variation_name in VARIATIONS:
+            varied_weight = weight_manager.get_weights(
+                events, *self.weights, "variation", variation=variation_name
+            )
+            self.histogram.fill(**ax, variation=variation_name, weight=varied_weight)
 
     def get_histogram(self):
         return self.histogram
@@ -168,6 +204,18 @@ class HistManager:
                       start=600,
                       stop=2100,
                       function = lambda events: events.HT_GoodJets)
+        self.add_axis("s_t",
+                      "$S_T (GeV)$",
+                      bins=20,
+                      start=0,
+                      stop=5000,
+                      function = lambda events: events.S_T)
+        self.add_axis("s_hat",
+                      "$\hat{s} (GeV)$",
+                      bins=20,
+                      start=0,
+                      stop=5000,
+                      function = lambda events: events.s_hat)
         self.add_axis("m_tw",
                       "$M_T^W (GeV)$",
                       bins=20,
@@ -419,209 +467,269 @@ class HistManager:
     def define_histograms(self):
         self.add_histogram("lepton_pt",
                            [self.axes["lepton_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("lepton_eta",
                            [self.axes["lepton_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("jet_pt",
                            [self.axes["jet_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("jet_eta",
                            [self.axes["jet_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("bjet_pt",
                            [self.axes["bjet_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("bjet_eta",
                            [self.axes["bjet_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("met_pt",
                            [self.axes["met_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("met_eta",
                            [self.axes["met_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("ht_jets",
                            [self.axes["ht_jets"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("ht_goodJets",
                            [self.axes["ht_goodJets"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
+                          )
+        self.add_histogram("s_t",
+                           [self.axes["s_t"]],
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
+                          )
+        self.add_histogram("s_hat",
+                           [self.axes["s_hat"]],
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("m_tw",
                            [self.axes["m_tw"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("m_w",
                            [self.axes["m_w"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("w_pt",
                            [self.axes["w_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("w_eta",
                            [self.axes["w_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("m_top",
                            [self.axes["m_top"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("top_pt",
                            [self.axes["top_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("top_eta",
                            [self.axes["top_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("m_t",
                            [self.axes["m_t"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("t_pt",
                            [self.axes["t_pt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("t_eta",
                            [self.axes["t_eta"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
 
         #############################     delta          ####################
         self.add_histogram("delta_r_ljet",
                            [self.axes["delta_r_ljet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_lbjet",
                            [self.axes["delta_r_lbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_wl",
                            [self.axes["delta_r_wl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_wjet",
                            [self.axes["delta_r_wjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_wbjet",
                            [self.axes["delta_r_wbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_topl",
                            [self.axes["delta_r_topl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_topjet",
                            [self.axes["delta_r_topjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_topbjet",
                            [self.axes["delta_r_topbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_tl",
                            [self.axes["delta_r_tl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_tjet",
                            [self.axes["delta_r_tjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_tbjet",
                            [self.axes["delta_r_tbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_wtop",
                            [self.axes["delta_r_wtop"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_wt",
                            [self.axes["delta_r_wt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_r_ttop",
                            [self.axes["delta_r_ttop"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
 
         ################################        delta phi        #####################
         self.add_histogram("delta_phi_ljet",
                            [self.axes["delta_phi_ljet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_lbjet",
                            [self.axes["delta_phi_lbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_wl",
                            [self.axes["delta_phi_wl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_wjet",
                            [self.axes["delta_phi_wjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_wbjet",
                            [self.axes["delta_phi_wbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_topl",
                            [self.axes["delta_phi_topl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_topjet",
                            [self.axes["delta_phi_topjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_topbjet",
                            [self.axes["delta_phi_topbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_tl",
                            [self.axes["delta_phi_tl"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_tjet",
                            [self.axes["delta_phi_tjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_tbjet",
                            [self.axes["delta_phi_tbjet"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_wtop",
                            [self.axes["delta_phi_wtop"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_wt",
                            [self.axes["delta_phi_wt"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("delta_phi_ttop",
                            [self.axes["delta_phi_ttop"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
 
         #############################      Multiplicity       #########################
         self.add_histogram("jets_multiplicity",
                            [self.axes["jet_multiplicity"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         self.add_histogram("bjets_multiplicity",
                            [self.axes["bjet_multiplicity"]],
-                           ["xsec", "luminosity", "sum_genweight"]
+                           ["xsec", "luminosity", "sum_genweight"],
+                           apply_variations=True
                           )
         
     def add_axis(self,
@@ -638,9 +746,10 @@ class HistManager:
     def add_histogram(self,
                       name,
                       axes:List[str],
-                      weights= None
+                      weights= None,
+                      apply_variations = False
                      ):
-        self.histograms[name] = Histogram(name, axes, weights)
+        self.histograms[name] = Histogram(name, axes, weights, apply_variations)
         
     def get_histogram(self, name):
         return self.histograms[name]

@@ -46,18 +46,20 @@ class Analysis(processor.ProcessorABC):
         self.output["features"][cat][dts]["lepton_eta"] = column_accumulator(ak.to_numpy(events.GoodLeptons.Eta))
         self.output["features"][cat][dts]["jet_shape"] = column_accumulator(ak.to_numpy(ak.num(events.GoodJets.PT)))
         self.output["features"][cat][dts]["bjet_shape"] = column_accumulator(ak.to_numpy(ak.num(events.GoodBJets.PT)))
-        self.output["features"][cat][dts]["jet_pt"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodJets.PT, 6, axis=1, clip=True),
+        self.output["features"][cat][dts]["jet_pt"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodJets.PT, 8, axis=1, clip=True),
                                                                                              0.0)))
-        self.output["features"][cat][dts]["jet_eta"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodJets.eta, 6, axis=1, clip=True),
+        self.output["features"][cat][dts]["jet_eta"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodJets.eta, 8, axis=1, clip=True),
                                                                                              0.0)))
-        self.output["features"][cat][dts]["bjet_pt"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodBJets.PT, 3, axis=1, clip=True),
+        self.output["features"][cat][dts]["bjet_pt"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodBJets.PT, 2, axis=1, clip=True),
                                                                                              0.0)))
-        self.output["features"][cat][dts]["bjet_eta"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodBJets.eta, 3, axis=1, clip=True),
+        self.output["features"][cat][dts]["bjet_eta"] = column_accumulator(ak.to_numpy(ak.fill_none(ak.pad_none(events.GoodBJets.eta, 2, axis=1, clip=True),
                                                                                              0.0)))
         self.output["features"][cat][dts]["met_pt"] = column_accumulator(ak.to_numpy(events.MissingET.MET))
         self.output["features"][cat][dts]["met_eta"] = column_accumulator(ak.to_numpy(events.MissingET.eta))
         self.output["features"][cat][dts]["ht_jets"] = column_accumulator(ak.to_numpy(events.HT_Jets))
         self.output["features"][cat][dts]["ht_goodJets"] = column_accumulator(ak.to_numpy(events.HT_GoodJets))
+        self.output["features"][cat][dts]["s_t"] = column_accumulator(ak.to_numpy(events.S_T))
+        self.output["features"][cat][dts]["s_hat"] = column_accumulator(ak.to_numpy(events.s_hat))
         self.output["features"][cat][dts]["m_wt"] = column_accumulator(ak.to_numpy(events.W_T))
         self.output["features"][cat][dts]["W_pt"] = column_accumulator(ak.to_numpy(events.W.pt))
         self.output["features"][cat][dts]["W_eta"] = column_accumulator(ak.to_numpy(events.W.eta))
@@ -120,15 +122,27 @@ class Analysis(processor.ProcessorABC):
             object_selector.select_good_objects(cat)
             object_selector.count_good_objects()
             selected_events, cutflow = event_selector.select_good_events(cat)
-            self.output["cutflow"][cat][dataset] = cutflow
-            if len(selected_events) == 0:
-                continue
-            self.store_features_for_NN(selected_events, dataset, cat)
-            for name, hist in self.histograms.items():
-                # hist_copy = copy.deepcopy(hist)
-                hist.fill(selected_events)
-                self.output["hists"][cat][name][dataset] = copy.deepcopy(hist.get_histogram())
-                hist.reset_histogram()
+            if cat == "noEFT":
+                self.output["cutflow"][cat][dataset] = cutflow
+                if len(selected_events) == 0:
+                    continue
+                self.store_features_for_NN(selected_events, dataset, cat)
+                for name, hist in self.histograms.items():
+                    # hist_copy = copy.deepcopy(hist)
+                    hist.fill(selected_events)
+                    self.output["hists"][cat][name][dataset] = copy.deepcopy(hist.get_histogram())
+                    hist.reset_histogram()
+            else:
+                if "Signal_" in dataset:
+                    self.output["cutflow"][cat][dataset] = cutflow
+                    if len(selected_events) == 0:
+                        continue
+                    self.store_features_for_NN(selected_events, dataset, cat)
+                    for name, hist in self.histograms.items():
+                        # hist_copy = copy.deepcopy(hist)
+                        hist.fill(selected_events)
+                        self.output["hists"][cat][name][dataset] = copy.deepcopy(hist.get_histogram())
+                        hist.reset_histogram()
         
         return self.output
 

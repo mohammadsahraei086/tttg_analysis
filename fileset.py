@@ -9,14 +9,13 @@ fileset_test = {
             "mass": 500.0
         }
     },
-	"tt":{
+	"tttt":{
         "files":{
-            "/data/shared02/ROOT_Samples/Backgrounds/tt_0.root":"Delphes",
-			"/data/shared02/ROOT_Samples/Backgrounds/tt_1.root":"Delphes"
+            "/data/shared02/ROOT_Samples/Backgrounds/tttt.root":"Delphes"
             },
         "metadata":{
-            "xsec": 1324.67,
-			"nevents": 2000000
+            "xsec": 12.28,
+			"nevents": 1000000
         }
     }
 }
@@ -154,7 +153,7 @@ fileset = {
             },
         "metadata":{
             "xsec": 34428662.4,
-			"nevents": 9000000
+			"nevents": 4034559
         }
     },
 	"ZZ":{
@@ -181,7 +180,7 @@ fileset = {
             },
         "metadata":{
             "xsec": 3595340.5,
-			"nevents": 9000000
+			"nevents": 4084849
         }
     },
 	"tHJets":{
@@ -237,7 +236,7 @@ fileset = {
             },
         "metadata":{
             "xsec": 59488.0,
-			"nevents": 2000000
+			"nevents": 1185906
         }
     },
 	"ttH":{
