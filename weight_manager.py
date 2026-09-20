@@ -5,7 +5,6 @@ from weight_variations import WEIGHT_INDEX, NOMINAL_VARIATION
 class WeightManager:
     def __init__(self):
         self.phase2_luminosity = 3000
-        self.n_primary = n_primary
     
     def get_weights(self, events, *weights, **kwargs):
         total_weight = np.prod([])
@@ -39,7 +38,7 @@ class WeightManager:
         """
         if "srMuR" in variation:
             w = events.Weight.Weight
-            nominal_idx = WEIGHT_INDEX["Nominal_isr_fsr"]
+            nominal_idx = WEIGHT_INDEX["Nominal_isrMuR_fsrMuR"]
         else:
             w = events.WeightLHEF.Weight
             nominal_idx = WEIGHT_INDEX[NOMINAL_VARIATION]

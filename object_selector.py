@@ -6,22 +6,17 @@ class ObjectSelector:
     def __init__(self, events):
         self.events = events     
         
-    def selected_electrons(self, ID="tight", channel="1-lep"):
+    def selected_electrons(self, ID="tight"):
 
-        electrons = self.events.Electron
-        if channel == "1-lep":
-            pt_mask = electrons.PT >= 25
-        elif channel == "2-lep":
-            pt_mask = electrons.PT >= 20
-        else:
-            pt_mask = ak.ones_like(electrons.PT)
-
+        electrons = self.events.Electron        
         eta_mask = (abs(electrons.Eta) < 0.3) & ((abs(electrons.Eta) < 1.4442) | (abs(electrons.Eta) > 1.566))
  
         if ID == "tight":
-            iso_mask = electrons.IsolationVarRhoCorr < 0.15      # To be checked
+            iso_mask = electrons.IsolationVarRhoCorr < 0.15
+            pt_mask = electrons.PT >= 25
         else:
             iso_mask = electrons.IsolationVarRhoCorr < 0.25
+            pt_mask = electrons.PT >= 10
         
         selected_electrons = electrons[pt_mask & iso_mask & eta_mask]
         selected_electrons = ak.with_field(selected_electrons, "e", "flavor")
@@ -32,22 +27,17 @@ class ObjectSelector:
         
         return selected_electrons
     
-    def selected_muons(self, ID="tight", channel="1-lep"):
+    def selected_muons(self, ID="tight"):
         
-        muons = ak.with_name(self.events.MuonTight, name='PtEtaPhiMLorentzVector')
-        if channel == "1-lep":
-            pt_mask = muons.PT >= 25
-        elif channel == "2-lep":
-            pt_mask = muons.PT >= 20
-        else:
-            pt_mask = ak.ones_like(muons.PT)
-
+        muons = ak.with_name(self.events.MuonTight, name='PtEtaPhiMLorentzVector')        
         eta_mask = abs(muons.Eta) < 2.8 
 
         if ID == "tight":
             iso_mask = muons.IsolationVarRhoCorr < 0.15 # To be checked
+            pt_mask = muons.PT >= 25
         else:
             iso_mask = muons.IsolationVarRhoCorr < 0.25 # To be checked
+            pt_mask = muons.PT >= 10
         
         selected_muons = muons[pt_mask & iso_mask & eta_mask]
         selected_muons = ak.with_field(selected_muons, "mu", "flavor")
@@ -79,12 +69,12 @@ class ObjectSelector:
         
         return selected
     
-    def select_good_objects(self, channel = "1-lep"):
+    def select_good_objects(self):
         
-        self.events["GoodElectrons"] = self.selected_electrons(channel)
-        self.events["GoodMuons"] = self.selected_muons(channel)
-        self.events["LooseElectrons"] = self.selected_electrons(channel, ID="loose")
-        self.events["LooseMuons"] = self.selected_muons(channel, ID="loose")
+        self.events["GoodElectrons"] = self.selected_electrons()
+        self.events["GoodMuons"] = self.selected_muons()
+        self.events["LooseElectrons"] = self.selected_electrons(ID="loose")
+        self.events["LooseMuons"] = self.selected_muons(ID="loose")
         self.events["GoodLeptons"] = ak.with_name(ak.concatenate((self.events["GoodElectrons"], self.events["GoodMuons"]), axis=1,
                                                   behavior = vector.behavior),
                                                   name='PtEtaPhiMLorentzVector'

@@ -114,6 +114,8 @@ class EventSelector:
 
         mask = ak.Array([True] * len(selected_events))
         for name in selection.names:
+            if name=="nNotBJet":
+                continue
             new_mask = selection.all(name)
             cutflow["yield"][name] = ak.sum(mask & new_mask)*weight
             cutflow["nevents"][name] = ak.sum(mask & new_mask)

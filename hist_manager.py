@@ -34,7 +34,7 @@ class Histogram:
     # against that variation, which should come out identical.
     NOMINAL_LABEL = "nominal"
     
-    def __init__(self,name, axes:List[Axis], weights=None):
+    def __init__(self, name, axes:List[Axis], weights=None, apply_variations=False):
         self.name = name
         self.axes = axes
         # variations only make sense for weighted histograms
@@ -95,34 +95,80 @@ class Histogram:
                 ax.bins, name=ax.name, label=ax.label, growth=ax.growth
             )
 
+    # def fill(self, events):
+    #     ax = {}
+    #     for axis in self.axes:
+    #         ax[axis.name] = axis.get_variable(events)
+
+    #     if self.weights is None:
+    #         self.histogram.fill(**ax)
+    #         return
+
+    #     weight_manager = WeightManager()
+
+    #     if not self.apply_variations:
+    #         weight = weight_manager.get_weights(events, *self.weights)
+    #         self.histogram.fill(**ax, weight=weight)
+    #         return
+
+    #     # nominal: usual xsec*luminosity/sum_genweight normalization, no
+    #     # scale/PDF reweighting applied
+    #     nominal_weight = weight_manager.get_weights(events, *self.weights)
+    #     self.histogram.fill(**ax, variation=self.NOMINAL_LABEL, weight=nominal_weight)
+
+    #     # each scale/PDF variation: same normalization, reweighted by the
+    #     # ratio of that variation's weight to the nominal weight
+    #     for variation_name in VARIATIONS:
+    #         varied_weight = weight_manager.get_weights(
+    #             events, *self.weights, "variation", variation=variation_name
+    #         )
+    #         self.histogram.fill(**ax, variation=variation_name, weight=varied_weight)
     def fill(self, events):
         ax = {}
         for axis in self.axes:
             ax[axis.name] = axis.get_variable(events)
-
+    
+        def broadcast_and_flatten(weight):
+            """Expand `weight` (scalar or one-per-event) to match each axis
+            variable's structure (one-per-object when jagged), then flatten
+            both consistently so their lengths always agree.
+            NOTE: assumes all axes on this Histogram share the same jagged
+            structure (true for every histogram defined in this file, since
+            each has exactly one axis)."""
+            flat_ax = {}
+            flat_weight = weight
+            for name, var in ax.items():
+                if getattr(var, "ndim", 1) > 1:
+                    var_b, w_b = ak.broadcast_arrays(var, weight)
+                    flat_ax[name] = ak.flatten(var_b)
+                    flat_weight = ak.flatten(w_b)
+                else:
+                    flat_ax[name] = var
+            return flat_ax, flat_weight
+    
         if self.weights is None:
-            self.histogram.fill(**ax)
+            flat_ax, _ = broadcast_and_flatten(1.0)
+            self.histogram.fill(**flat_ax)
             return
-
+    
         weight_manager = WeightManager()
-
+    
         if not self.apply_variations:
             weight = weight_manager.get_weights(events, *self.weights)
-            self.histogram.fill(**ax, weight=weight)
+            flat_ax, flat_weight = broadcast_and_flatten(weight)
+            self.histogram.fill(**flat_ax, weight=flat_weight)
             return
-
-        # nominal: usual xsec*luminosity/sum_genweight normalization, no
-        # scale/PDF reweighting applied
+    
         nominal_weight = weight_manager.get_weights(events, *self.weights)
-        self.histogram.fill(**ax, variation=self.NOMINAL_LABEL, weight=nominal_weight)
-
-        # each scale/PDF variation: same normalization, reweighted by the
-        # ratio of that variation's weight to the nominal weight
+        flat_ax, flat_weight = broadcast_and_flatten(nominal_weight)
+        self.histogram.fill(**flat_ax, variation=self.NOMINAL_LABEL, weight=flat_weight)
+    
         for variation_name in VARIATIONS:
             varied_weight = weight_manager.get_weights(
                 events, *self.weights, "variation", variation=variation_name
             )
-            self.histogram.fill(**ax, variation=variation_name, weight=varied_weight)
+            flat_ax, flat_weight = broadcast_and_flatten(varied_weight)
+            self.histogram.fill(**flat_ax, variation=variation_name, weight=flat_weight)
 
     def get_histogram(self):
         return self.histogram
@@ -149,37 +195,37 @@ class HistManager:
                       bins=15,
                       start=20,
                       stop=320,
-                      function = lambda events: ak.flatten(events.GoodLeptons.PT))
+                      function = lambda events: events.GoodLeptons.PT)
         self.add_axis("lepton_eta",
                       "$\eta^e$",
                       bins=12,
                       start=-3,
                       stop=3,
-                      function = lambda events: ak.to_numpy(ak.flatten(events.GoodLeptons.eta)))
+                      function = lambda events: events.GoodLeptons.eta)
         self.add_axis("jet_pt",
                       "$p_T^{jets} (GeV)$",
                       bins=15,
                       start=25,
                       stop=325,
-                      function = lambda events: ak.flatten(events.GoodJets.PT))
+                      function = lambda events: events.GoodJets.PT)
         self.add_axis("jet_eta",
                       "$\eta^{jets}$",
                       bins=20,
                       start=-5,
                       stop=5,
-                      function = lambda events: ak.flatten(events.GoodJets.eta))
+                      function = lambda events: events.GoodJets.eta)
         self.add_axis("bjet_pt",
                       "$p_T^{b-jets} (GeV)$",
                       bins=15,
                       start=25,
                       stop=325,
-                      function = lambda events: ak.flatten(events.GoodBJets.PT))
+                      function = lambda events: events.GoodBJets.PT)
         self.add_axis("bjet_eta",
                       "$\eta^{b-jets}$",
                       bins=12,
                       start=-3,
                       stop=3,
-                      function = lambda events: ak.flatten(events.GoodBJets.eta))
+                      function = lambda events: events.GoodBJets.eta)
         self.add_axis("met_pt",
                       "$p_T^{MET} (GeV)$",
                       bins=20,
@@ -221,61 +267,61 @@ class HistManager:
                       bins=20,
                       start=0,
                       stop=300,
-                      function = lambda events: ak.flatten(events.W_T))
+                      function = lambda events: events.W_T)
         self.add_axis("m_w",
                       "$M_W (GeV)$",
                       bins=20,
                       start=0,
                       stop=200,
-                      function = lambda events: ak.flatten(events.W.mass))
+                      function = lambda events: events.W.mass)
         self.add_axis("w_pt",
                       "$p_T^W (GeV)$",
                       bins=20,
                       start=0,
                       stop=300,
-                      function = lambda events: ak.flatten(events.W.pt))
+                      function = lambda events: events.W.pt)
         self.add_axis("w_eta",
                       "$\eta^W (GeV)$",
                       bins=12,
                       start=-3,
                       stop=3,
-                      function = lambda events: ak.flatten(events.W.eta))
+                      function = lambda events: events.W.eta)
         self.add_axis("m_top",
                       "$M_{top} (GeV)$",
                       bins=18,
                       start=100,
                       stop=1000,
-                      function = lambda events: ak.flatten(events.top.mass))
+                      function = lambda events: events.top.mass)
         self.add_axis("top_pt",
                       "$p_T^{top} (GeV)$",
                       bins=14,
                       start=0,
                       stop=700,
-                      function = lambda events: ak.flatten(events.top.pt))
+                      function = lambda events: events.top.pt)
         self.add_axis("top_eta",
                       "$\eta^top(GeV)$",
                       bins=12,
                       start=-3,
                       stop=3,
-                      function = lambda events: ak.flatten(events.top.eta))
+                      function = lambda events: events.top.eta)
         self.add_axis("m_t",
                       "$M_{T} (GeV)$",
                       bins=18,
                       start=200,
                       stop=2000,
-                      function = lambda events: ak.flatten(events.T.mass))
+                      function = lambda events: events.T.mass)
         self.add_axis("t_pt",
                       "$p_T^{T} (GeV)$",
                       bins=14,
                       start=0,
                       stop=700,
-                      function = lambda events: ak.flatten(events.T.pt))
+                      function = lambda events: events.T.pt)
         self.add_axis("t_eta",
                       "$\eta^T (GeV)$",
                       bins=12,
                       start=-3,
                       stop=3,
-                      function = lambda events: ak.flatten(events.T.eta))
+                      function = lambda events: events.T.eta)
 
         #############################     delta r       #################
         self.add_axis("delta_r_ljet",
@@ -283,85 +329,85 @@ class HistManager:
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.GoodLeptons.delta_r(events.GoodNotBJets[:,0])))
+                      function = lambda events: events.GoodLeptons.delta_r(events.GoodNotBJets[:,0]))
         self.add_axis("delta_r_lbjet",
                       "$\Delta r(\ell,Leading-bJet)$",
                       bins=13,
                       start=0.4,
                       stop=4.4,
-                      function = lambda events: ak.flatten(events.GoodLeptons.delta_r(events.GoodBJets[:,0])))
+                      function = lambda events: events.GoodLeptons.delta_r(events.GoodBJets[:,0]))
         self.add_axis("delta_r_wl",
                       "$\Delta r(W, \ell)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.W.delta_r(events.GoodLeptons[:,0])))
+                      function = lambda events: events.W.delta_r(events.GoodLeptons[:,0]))
         self.add_axis("delta_r_wjet",
                       "$\Delta r(W, Leading-Jet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.W.delta_r(events.GoodNotBJets[:,0])))
+                      function = lambda events: events.W.delta_r(events.GoodNotBJets[:,0]))
         self.add_axis("delta_r_wbjet",
                       "$\Delta r(W, Leading-bJet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.W.delta_r(events.GoodBJets[:,0])))
+                      function = lambda events: events.W.delta_r(events.GoodBJets[:,0]))
         self.add_axis("delta_r_topl",
                       "$\Delta r(top, \ell)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.top.delta_r(events.GoodLeptons[:,0])))
+                      function = lambda events: events.top.delta_r(events.GoodLeptons[:,0]))
         self.add_axis("delta_r_topjet",
                       "$\Delta r(top, Leading-Jet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.top.delta_r(events.GoodNotBJets[:,0])))
+                      function = lambda events: events.top.delta_r(events.GoodNotBJets[:,0]))
         self.add_axis("delta_r_topbjet",
                       "$\Delta r(top, Leading-bJet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.top.delta_r(events.GoodBJets[:,0])))
+                      function = lambda events: events.top.delta_r(events.GoodBJets[:,0]))
         self.add_axis("delta_r_tl",
                       "$\Delta r(T, \ell)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.T.delta_r(events.GoodLeptons[:,0])))
+                      function = lambda events: events.T.delta_r(events.GoodLeptons[:,0]))
         self.add_axis("delta_r_tjet",
                       "$\Delta r(T, Leading-Jet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.T.delta_r(events.GoodNotBJets[:,0])))
+                      function = lambda events: events.T.delta_r(events.GoodNotBJets[:,0]))
         self.add_axis("delta_r_tbjet",
                       "$\Delta r(T, Leading-bJet)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.T.delta_r(events.GoodBJets[:,0])))
+                      function = lambda events: events.T.delta_r(events.GoodBJets[:,0]))
         self.add_axis("delta_r_wtop",
                       "$\Delta r(W, top)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.W.delta_r(events.top[:,0])))
+                      function = lambda events: events.W.delta_r(events.top[:,0]))
         self.add_axis("delta_r_wt",
                       "$\Delta r(W, t)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.W.delta_r(events.T[:,0])))
+                      function = lambda events: events.W.delta_r(events.T[:,0]))
         self.add_axis("delta_r_ttop",
                       "$\Delta r(t, top)$",
                       bins=15,
                       start=0.4,
                       stop=5,
-                      function = lambda events: ak.flatten(events.T.delta_r(events.top[:,0])))
+                      function = lambda events: events.T.delta_r(events.top[:,0]))
 
         ################################    delta phi ###################
         self.add_axis("delta_phi_ljet",
@@ -369,85 +415,85 @@ class HistManager:
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.GoodLeptons.delta_phi(events.GoodNotBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.GoodLeptons.delta_phi(events.GoodNotBJets[:,0]))))
         self.add_axis("delta_phi_lbjet",
                       "$Cos(\Delta \phi(\ell,Leading-bJet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.GoodLeptons.delta_phi(events.GoodBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.GoodLeptons.delta_phi(events.GoodBJets[:,0]))))
         self.add_axis("delta_phi_wl",
                       "$Cos(\Delta \phi(W, \ell))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.W.delta_phi(events.GoodLeptons[:,0])))))
+                      function = lambda events: np.cos(abs(events.W.delta_phi(events.GoodLeptons[:,0]))))
         self.add_axis("delta_phi_wjet",
                       "$Cos(\Delta \phi(W, Leading-Jet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.W.delta_phi(events.GoodNotBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.W.delta_phi(events.GoodNotBJets[:,0]))))
         self.add_axis("delta_phi_wbjet",
                       "$Cos(\Delta \phi(W, Leading-bJet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.W.delta_phi(events.GoodBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.W.delta_phi(events.GoodBJets[:,0]))))
         self.add_axis("delta_phi_topl",
                       "$Cos(\Delta \phi(top, \ell))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.top.delta_phi(events.GoodLeptons[:,0])))))
+                      function = lambda events: np.cos(abs(events.top.delta_phi(events.GoodLeptons[:,0]))))
         self.add_axis("delta_phi_topjet",
                       "$Cos(\Delta \phi(top, Leading-Jet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.top.delta_phi(events.GoodNotBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.top.delta_phi(events.GoodNotBJets[:,0]))))
         self.add_axis("delta_phi_topbjet",
                       "$Cos(\Delta \phi(top, Leading-bJet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.top.delta_phi(events.GoodBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.top.delta_phi(events.GoodBJets[:,0]))))
         self.add_axis("delta_phi_tl",
                       "$Cos(\Delta \phi(T, \ell))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.T.delta_phi(events.GoodLeptons[:,0])))))
+                      function = lambda events: np.cos(abs(events.T.delta_phi(events.GoodLeptons[:,0]))))
         self.add_axis("delta_phi_tjet",
                       "$Cos(\Delta \phi(T, Leading-Jet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.T.delta_phi(events.GoodNotBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.T.delta_phi(events.GoodNotBJets[:,0]))))
         self.add_axis("delta_phi_tbjet",
                       "$Cos(\Delta \phi(T, Leading-bJet))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.T.delta_phi(events.GoodBJets[:,0])))))
+                      function = lambda events: np.cos(abs(events.T.delta_phi(events.GoodBJets[:,0]))))
         self.add_axis("delta_phi_wtop",
                       "$Cos(\Delta \phi(W, top))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.W.delta_phi(events.top[:,0])))))
+                      function = lambda events: np.cos(abs(events.W.delta_phi(events.top[:,0]))))
         self.add_axis("delta_phi_wt",
                       "$Cos(\Delta \phi(W, t))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.W.delta_phi(events.T[:,0])))))
+                      function = lambda events: np.cos(abs(events.W.delta_phi(events.T[:,0]))))
         self.add_axis("delta_phi_ttop",
                       "$Cos(\Delta \phi(t, top))$",
                       bins=10,
                       start=0,
                       stop=1,
-                      function = lambda events: ak.flatten(np.cos(abs(events.T.delta_phi(events.top[:,0])))))
+                      function = lambda events: np.cos(abs(events.T.delta_phi(events.top[:,0]))))
 
         ############################  Multiplicity ###################
         self.add_axis("jet_multiplicity",
@@ -464,272 +510,272 @@ class HistManager:
                       function = lambda events: events.nGoodBJets)
                       
         
-    def define_histograms(self):
+    def define_histograms(self, apply_variations=False):
         self.add_histogram("lepton_pt",
                            [self.axes["lepton_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("lepton_eta",
                            [self.axes["lepton_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("jet_pt",
                            [self.axes["jet_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("jet_eta",
                            [self.axes["jet_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("bjet_pt",
                            [self.axes["bjet_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("bjet_eta",
                            [self.axes["bjet_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("met_pt",
                            [self.axes["met_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("met_eta",
                            [self.axes["met_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("ht_jets",
                            [self.axes["ht_jets"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("ht_goodJets",
                            [self.axes["ht_goodJets"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("s_t",
                            [self.axes["s_t"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("s_hat",
                            [self.axes["s_hat"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("m_tw",
                            [self.axes["m_tw"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("m_w",
                            [self.axes["m_w"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("w_pt",
                            [self.axes["w_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("w_eta",
                            [self.axes["w_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("m_top",
                            [self.axes["m_top"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("top_pt",
                            [self.axes["top_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("top_eta",
                            [self.axes["top_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("m_t",
                            [self.axes["m_t"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("t_pt",
                            [self.axes["t_pt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("t_eta",
                            [self.axes["t_eta"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
 
         #############################     delta          ####################
         self.add_histogram("delta_r_ljet",
                            [self.axes["delta_r_ljet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_lbjet",
                            [self.axes["delta_r_lbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_wl",
                            [self.axes["delta_r_wl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_wjet",
                            [self.axes["delta_r_wjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_wbjet",
                            [self.axes["delta_r_wbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_topl",
                            [self.axes["delta_r_topl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_topjet",
                            [self.axes["delta_r_topjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_topbjet",
                            [self.axes["delta_r_topbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_tl",
                            [self.axes["delta_r_tl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_tjet",
                            [self.axes["delta_r_tjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_tbjet",
                            [self.axes["delta_r_tbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_wtop",
                            [self.axes["delta_r_wtop"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_wt",
                            [self.axes["delta_r_wt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_r_ttop",
                            [self.axes["delta_r_ttop"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
 
         ################################        delta phi        #####################
         self.add_histogram("delta_phi_ljet",
                            [self.axes["delta_phi_ljet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_lbjet",
                            [self.axes["delta_phi_lbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_wl",
                            [self.axes["delta_phi_wl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_wjet",
                            [self.axes["delta_phi_wjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_wbjet",
                            [self.axes["delta_phi_wbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_topl",
                            [self.axes["delta_phi_topl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_topjet",
                            [self.axes["delta_phi_topjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_topbjet",
                            [self.axes["delta_phi_topbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_tl",
                            [self.axes["delta_phi_tl"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_tjet",
                            [self.axes["delta_phi_tjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_tbjet",
                            [self.axes["delta_phi_tbjet"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_wtop",
                            [self.axes["delta_phi_wtop"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_wt",
                            [self.axes["delta_phi_wt"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("delta_phi_ttop",
                            [self.axes["delta_phi_ttop"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
 
         #############################      Multiplicity       #########################
         self.add_histogram("jets_multiplicity",
                            [self.axes["jet_multiplicity"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         self.add_histogram("bjets_multiplicity",
                            [self.axes["bjet_multiplicity"]],
                            ["xsec", "luminosity", "sum_genweight"],
-                           apply_variations=True
+                           apply_variations=apply_variations
                           )
         
     def add_axis(self,

@@ -127,7 +127,7 @@ WEIGHT_INDEX = {
     # 'MUF=2.0_MUR=0.5_PDF=247000': 287,
     'MUF=2.0_MUR=1.0_PDF=247000': 24,
     # 'MUF=2.0_MUR=2.0_PDF=247000': 289,
-    "Nominal_isr_fsr": 145
+    "Nominal_isrMuR_fsrMuR": 145,
     "fsrMuRDown": 148,
     "fsrMuRUp": 149,
     "isrMuRDown": 152,

@@ -13,15 +13,13 @@ from object_selector import ObjectSelector
 from event_selector import EventSelector
 from fileset import *
 
-fileset = fileset
+fileset = fileset_test
 
 class Analysis(processor.ProcessorABC):
     
     def __init__(self):
         self.hist_manager = HistManager()
         self.hist_manager.define_axes()
-        self.hist_manager.define_histograms()
-        self.histograms = self.hist_manager.get_histograms()
         self.categories = ["noEFT", "sEFT", "s_hatEFT"]
     
     def define_output_layout(self):
@@ -112,14 +110,19 @@ class Analysis(processor.ProcessorABC):
 
     def process(self, events):
         dataset = events.metadata["dataset"]
-        self.output = self.define_output_layout()
         self.events = events
 
         object_selector = ObjectSelector(self.events)
         event_selector = EventSelector(self.events)
+        if "Signal_" in dataset:
+            self.hist_manager.define_histograms(apply_variations=True)
+        else:
+            self.hist_manager.define_histograms(apply_variations=False)
+        self.histograms = self.hist_manager.get_histograms()
+        self.output = self.define_output_layout()
 
         for cat in self.categories:
-            object_selector.select_good_objects(cat)
+            object_selector.select_good_objects()
             object_selector.count_good_objects()
             selected_events, cutflow = event_selector.select_good_events(cat)
             if cat == "noEFT":
