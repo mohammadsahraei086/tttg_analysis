@@ -127,11 +127,11 @@ WEIGHT_INDEX = {
     # 'MUF=2.0_MUR=0.5_PDF=247000': 287,
     'MUF=2.0_MUR=1.0_PDF=247000': 24,
     # 'MUF=2.0_MUR=2.0_PDF=247000': 289,
-    "Nominal_isrMuR_fsrMuR": 145,
-    "fsrMuRDown": 148,
-    "fsrMuRUp": 149,
-    "isrMuRDown": 152,
-    "isrMuRUp": 153,
+    "Nominal_isrMuR_fsrMuR": 0,
+    "fsrMuRDown": 152,
+    "fsrMuRUp": 153,
+    "isrMuRDown": 150,
+    "isrMuRUp": 151,
 }
 
 # Convenience: ordered list of variation names, ready to loop over when

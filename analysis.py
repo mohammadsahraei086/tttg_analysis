@@ -13,7 +13,7 @@ from object_selector import ObjectSelector
 from event_selector import EventSelector
 from fileset import *
 
-fileset = fileset_test
+fileset = fileset
 
 class Analysis(processor.ProcessorABC):
     
@@ -160,31 +160,31 @@ def main():
 
     tstart = time.time()
     
-    futures_run = processor.Runner(
-        executor = processor.FuturesExecutor(compression=None, workers=20),
-        schema=DelphesSchema,
-        # maxchunks=10,
-    )
-
-    out = futures_run(
-        fileset,
-        treename="Delphes",
-        processor_instance=Analysis(),
-    )
-    
-    # iterative_run = processor.Runner(
-    #     executor = processor.IterativeExecutor(compression=None),
+    # futures_run = processor.Runner(
+    #     executor = processor.FuturesExecutor(compression=None, workers=20),
     #     schema=DelphesSchema,
-    #     chunksize=10000,
-    #     # maxchunks=None,
+    #     # maxchunks=10,
     # )
-    
-    # out = iterative_run(
+
+    # out = futures_run(
     #     fileset,
     #     treename="Delphes",
     #     processor_instance=Analysis(),
     # )
-    # print(out)
+    
+    iterative_run = processor.Runner(
+        executor = processor.IterativeExecutor(compression=None),
+        schema=DelphesSchema,
+        chunksize=100000,
+        # maxchunks=None,
+    )
+    
+    out = iterative_run(
+        fileset,
+        treename="Delphes",
+        processor_instance=Analysis(),
+    )
+    print(out)
     save(out, 'output/output.coffea')
     
     elapsed = time.time() - tstart

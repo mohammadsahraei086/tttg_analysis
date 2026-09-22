@@ -79,10 +79,12 @@ class EventSelector:
         events["HT_Jets"] = ak.sum(events.Jet.pt, axis=1)
         events["HT_GoodJets"] = ak.sum(events.GoodJets.pt, axis=1)
         events["S_T"] = ak.sum(events.GoodJets.pt, axis=1) + ak.sum(events.GoodLeptons.pt, axis=1) + events.MissingET.MET
-        if ak.any(events.Event.X1*events.Event.X2, axis=0) == 0:
-            raise ValueError("Center of Mass is energy is zero")
-        else:
-            events["s_hat"] = np.sqrt(events.Event.X1*events.Event.X2)*14000
+        incoming = events.Particle[events.Particle.Status==21]
+        events["s_hat"] = np.sqrt((incoming[:,0]["E"] + incoming[:,1]["E"])**2 -
+                                  (incoming[:,0]["Pz"] + incoming[:,1]["Pz"])**2 -
+                                  (incoming[:,0]["Px"] + incoming[:,1]["Px"])**2 -
+                                  (incoming[:,0]["Py"] + incoming[:,1]["Py"])**2
+                                 )
 
     def define_variables_after_selection(self, events, cat="noEFT"):
         
