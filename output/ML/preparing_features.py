@@ -10,16 +10,16 @@ class PrepareFeaturesForTraning:
     def __init__(self, output_path: "str" = "../output.coffea"):
         self.output = load(output_path)
         self.training_features = [
-            'lepton_pt', 'lepton_eta', 'jet_pt', 'jet_eta', 'bjet_pt', 'met_pt',
+            'lepton_pt', 'lepton_eta', 'jet_pt', 'jet_eta', 'bjet_pt', 'met_pt', "s_t", "s_hat"
             'met_eta', 'ht_goodJets', 'm_wt', 'W_pt', 'top_mass', 'top_pt', 'top_eta', 't_mass', 't_pt',
             't_eta', 'delta_r_ljet', 'delta_r_wl', 'delta_r_wjet', 'delta_r_topl', 'delta_r_topjet', 'delta_r_tl',
             'delta_r_tjet', 'delta_phi_wjet', 'delta_phi_wbjet', 'delta_phi_topjet', 'delta_phi_tjet', 'njets', 'nbjets'
         ]
 
         self.scaler = StandardScaler()
-        self.train, self.test = self.concatenate_features()
+        
 
-    def concatenate_features(self):
+    def concatenate_features(self, cat):
         train = {}
         test = {}
         for smpl in self.output["features"]:
@@ -38,8 +38,8 @@ class PrepareFeaturesForTraning:
             
         return train, test
 
-    def get_signal_background(self, signal: str = "Signal_500"):
-        
+    def get_signal_background(self, signal: str = "Signal_500", cat="noEFT"):
+        self.train, self.test = self.concatenate_features(cat)        
         X_train_raw, y_train_raw = self._prepare_data(self.train, signal)
         
         # Process test data  

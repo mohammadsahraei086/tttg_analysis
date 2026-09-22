@@ -27,17 +27,17 @@ class Analysis(processor.ProcessorABC):
         output["metadata"] = {}
         output["cutflow"] = {}
         output["hists"] = {}
+        output["features"] = {}
         for cat in self.categories:
             output["cutflow"][cat] = {}
             output["hists"][cat] = {}
+            output["features"][cat] = {}
             for hist in self.histograms:
                 output["hists"][cat][hist] = {}
                     
         return output
 
     def store_features_for_NN(self, events, dts, cat):
-        self.output["features"] = {}
-        self.output["features"][cat] = {}
         self.output["features"][cat][dts] = {}
 
         self.output["features"][cat][dts]["lepton_pt"] = column_accumulator(ak.to_numpy(events.GoodLeptons.PT))
