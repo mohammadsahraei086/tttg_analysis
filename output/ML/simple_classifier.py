@@ -127,15 +127,15 @@ class OptimizedHEPClassifier(nn.Module):
 
 
 class OptimizedTrainer:
-    def __init__(self, model, device, train_loader, val_loader):
-        self.model = model.to(device)
-        self.device = device
+    def __init__(self, model, train_loader, val_loader):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         
         # Calculate class weights for loss
         self.pos_weight = torch.tensor([(len(train_loader.dataset) - train_loader.dataset.tensors[1].sum()) / 
-                                        train_loader.dataset.tensors[1].sum()]).to(device)
+                                        train_loader.dataset.tensors[1].sum()]).to(self.device)
         
         # Different optimizer choices - try AdamW first
         self.optimizer = torch.optim.AdamW(model.parameters(), lr=0.0002, weight_decay=0.002)
@@ -207,7 +207,7 @@ class OptimizedTrainer:
         
         return avg_loss, auc, all_preds, all_labels
     
-    def train(self, epochs=50, patience=10, mass="Signal_500"):
+    def train(self, epochs=50, patience=10, mass="Signal_500", cat="noEFT"):
         best_val_auc = 0
         best_model_state = None
         patience_counter = 0
@@ -252,6 +252,6 @@ class OptimizedTrainer:
         
         # Load best model and save it
         self.model.load_state_dict(best_model_state)
-        torch.save(self.model.state_dict(), f'saved_models/{mass}.pth')
+        torch.save(self.model.state_dict(), f'saved_models/{cat}/{mass}.pth')
         
         return best_val_auc, train_losses, val_losses, train_aucs, val_aucs

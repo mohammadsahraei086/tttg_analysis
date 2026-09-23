@@ -10,7 +10,7 @@ class PrepareFeaturesForTraning:
     def __init__(self, output_path: "str" = "../output.coffea"):
         self.output = load(output_path)
         self.training_features = [
-            'lepton_pt', 'lepton_eta', 'jet_pt', 'jet_eta', 'bjet_pt', 'met_pt', "s_t", "s_hat"
+            'lepton_pt', 'lepton_eta', 'jet_pt', 'jet_eta', 'bjet_pt', 'met_pt', "s_t", "s_hat",
             'met_eta', 'ht_goodJets', 'm_wt', 'W_pt', 'top_mass', 'top_pt', 'top_eta', 't_mass', 't_pt',
             't_eta', 'delta_r_ljet', 'delta_r_wl', 'delta_r_wjet', 'delta_r_topl', 'delta_r_topjet', 'delta_r_tl',
             'delta_r_tjet', 'delta_phi_wjet', 'delta_phi_wbjet', 'delta_phi_topjet', 'delta_phi_tjet', 'njets', 'nbjets'
@@ -19,27 +19,40 @@ class PrepareFeaturesForTraning:
         self.scaler = StandardScaler()
         
 
-    def concatenate_features(self, cat):
+    def concatenate_features(self, signal, cat="noEFT"):
         train = {}
         test = {}
-        for smpl in self.output["features"]:
+        np_features =  np.concatenate(
+            [
+                self.output["features"][cat][signal][var].value.astype(np.float32) 
+                if isinstance(self.output["features"][cat][signal][var].value[0], np.ndarray)
+                else self.output["features"][cat][signal][var].value[:, None].astype(np.float32) 
+                for var in self.training_features
+            ], 
+            axis=1
+        )
+        length = len(np_features)
+        train[signal] = np_features[int(length/2):].copy()
+        test[signal] = np_features[:int(length/2)].copy()
+        
+        for smpl in self.output["features"]["noEFT"]:
             np_features =  np.concatenate(
                 [
-                    self.output["features"][smpl][var].value.astype(np.float32) 
-                    if isinstance(self.output["features"][smpl][var].value[0], np.ndarray)
-                    else self.output["features"][smpl][var].value[:, None].astype(np.float32) 
+                    self.output["features"]["noEFT"][smpl][var].value.astype(np.float32) 
+                    if isinstance(self.output["features"]["noEFT"][smpl][var].value[0], np.ndarray)
+                    else self.output["features"]["noEFT"][smpl][var].value[:, None].astype(np.float32) 
                     for var in self.training_features
                 ], 
                 axis=1
             )
             length = len(np_features)
-            train[smpl] = np_features[int(length/2):]
-            test[smpl] = np_features[:int(length/2)]
+            train[smpl] = np_features[int(length/2):].copy()
+            test[smpl] = np_features[:int(length/2)].copy()
             
         return train, test
 
     def get_signal_background(self, signal: str = "Signal_500", cat="noEFT"):
-        self.train, self.test = self.concatenate_features(cat)        
+        self.train, self.test = self.concatenate_features(signal, cat)        
         X_train_raw, y_train_raw = self._prepare_data(self.train, signal)
         
         # Process test data  
@@ -94,7 +107,8 @@ class PrepareFeaturesForTraning:
 
         return train_loader, val_loader, test_loader
 
-    def get_test_with_sample(self, signal="Signal_500"):
+    def get_test_with_sample(self, signal="Signal_500", cat="noEFT"):
+        self.train, self.test = self.concatenate_features(signal, cat)
         test = {}
         for smpl in self.test:
             try:
@@ -104,12 +118,13 @@ class PrepareFeaturesForTraning:
             except:
                 print(f"Scaler Is not Fitted on {signal}, Or Is not Fitted At All")
                 print("Trying To Fit Scaler again")
-                self.get_signal_background(signal)
+                self.get_signal_background(signal, cat)
                 test[smpl] = self.scaler.transform(self.test[smpl])
         
         return test
 
-    def get_total_samples(self, signal="Signal_500"):
+    def get_total_samples(self, signal="Signal_500", cat="noEFT"):
+        self.train, self.test = self.concatenate_features(signal, cat)
         total = {}
         for smpl in self.test:
             try:
@@ -119,7 +134,7 @@ class PrepareFeaturesForTraning:
             except:
                 print(f"Scaler Is not Fitted on {signal}, Or Is not Fitted At All")
                 print("Trying To Fit Scaler again")
-                self.get_signal_background(signal)
+                self.get_signal_background(signal, cat="noEFT")
                 total[smpl] = self.scaler.transform(np.vstack([self.test[smpl], self.train[smpl]]))
         
         return total

@@ -230,17 +230,17 @@ class Plotter:
         # Add bin edges as x-ticks
         # ax_bottom.set_xticks(bins)
     
-    def plot_histogram(self, normalized=False):
+    def plot_histogram(self, normalized=False, cat="noEFT"):
         self.define_figure()
         self.plot_datamc()
         # self.plot_ratio()
 
         os.makedirs(f"plots", exist_ok=True)
         if normalized:
-            plt.savefig(f"plots/{list(self.hist_info.signals.keys())[0]}_normalized.png", dpi=300, bbox_inches="tight")
+            plt.savefig(f"plots/{cat}/{list(self.hist_info.signals.keys())[0]}_normalized.png", dpi=300, bbox_inches="tight")
         else:
-            plt.savefig(f"plots/{list(self.hist_info.signals.keys())[0]}.png", dpi=300, bbox_inches="tight")
-        plt.show()
+            plt.savefig(f"plots/{cat}/{list(self.hist_info.signals.keys())[0]}.png", dpi=300, bbox_inches="tight")
+        # plt.show()
         # plt.savefig(f"plots/{name}.pdf", bbox_inches="tight")
         plt.close()
 

@@ -28,10 +28,12 @@ class Analysis(processor.ProcessorABC):
         output["cutflow"] = {}
         output["hists"] = {}
         output["features"] = {}
+        output["variations"] = {}
         for cat in self.categories:
             output["cutflow"][cat] = {}
             output["hists"][cat] = {}
             output["features"][cat] = {}
+            output["variations"][cat] = {}
             for hist in self.histograms:
                 output["hists"][cat][hist] = {}
                     
@@ -106,7 +108,11 @@ class Analysis(processor.ProcessorABC):
         
         self.output["features"][cat][dts]["njets"] = column_accumulator(ak.to_numpy(events.nGoodJets))
         self.output["features"][cat][dts]["nbjets"] = column_accumulator(ak.to_numpy(events.nGoodBJets))
-        
+
+    def save_variations(self, events, dts, cat):
+        self.output["variations"][cat][dts] = {}
+        self.output["variations"][cat][dts]["LHEF"] = column_accumulator(ak.to_numpy(events.WeightLHEF.Weight))
+        self.output["variations"][cat][dts]["Weight"] = column_accumulator(ak.to_numpy(events.Weight.Weight))        
 
     def process(self, events):
         dataset = events.metadata["dataset"]
@@ -130,6 +136,8 @@ class Analysis(processor.ProcessorABC):
                 if len(selected_events) == 0:
                     continue
                 self.store_features_for_NN(selected_events, dataset, cat)
+                if "Signal_" in dataset:
+                    self.save_variations(selected_events, dataset, cat)
                 for name, hist in self.histograms.items():
                     # hist_copy = copy.deepcopy(hist)
                     hist.fill(selected_events)
@@ -141,6 +149,7 @@ class Analysis(processor.ProcessorABC):
                     if len(selected_events) == 0:
                         continue
                     self.store_features_for_NN(selected_events, dataset, cat)
+                    self.save_variations(selected_events, dataset, cat)
                     for name, hist in self.histograms.items():
                         # hist_copy = copy.deepcopy(hist)
                         hist.fill(selected_events)
