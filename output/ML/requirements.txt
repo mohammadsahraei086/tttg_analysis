@@ -1,0 +1,13 @@
+numpy
+pandas
+scipy
+matplotlib
+scikit-learn
+torch
+tqdm
+coffea
+hist
+pyhf
+# optional
+uproot      # faster ROOT reading in limits/combine.py (falls back to PyROOT)
+# ROOT (PyROOT) is needed by limits/root_files.py; Combine must be on PATH for limits/combine.py

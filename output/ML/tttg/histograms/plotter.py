@@ -1,126 +1,12 @@
+"""Stacked-background / signal NN-output control plots."""
 import numpy as np
-import os
-import math
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 
-
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-
-cms_color = {
-    "blue": "#3f90da",
-    "orange": "#ffa90e",
-    "red": "#bd1f01",
-    "gray": "#94a4a2",
-    "purple": "#832db6",
-    "brown": "#a96b59",
-    "dark_orange": "#e76300",
-    "beige": "#b9ac70",
-    "dark_gray": "#717581",
-    "light_blue": "#92dadd",
-    'cyan': '#17becf',
-    'yellow-green': '#bcbd22',
-}
-
-@dataclass
-class HistInfo:
-    ax_label: str
-    bins: List = field(default_factory=list)
-    backgrounds: Dict[str, List] = field(default_factory=dict)
-    data: List = field(default_factory=list)
-    signals: Dict[str, List] = field(default_factory=dict)
-    # syst: List = field(default_factory=list)
-
-    @property
-    def stat(self) -> List[float]:
-        """Compute statistical errors dynamically."""
-        return [math.sqrt(abs(x)) for x in self.data]
-
-    # Temporary syst
-    @property
-    def syst(self) -> List[float]:
-        """Compute syst errors dynamically."""
-        return [math.sqrt(abs(x)) for x in self.total_backgrounds]
-
-    @property
-    def total_backgrounds(self) -> List[float]:
-        return sum(list(self.backgrounds.values()))
-
-    @property
-    def bin_centers(self) -> List:
-        centers = []
-        for i in range(len(self.bins)-1):
-            center = (self.bins[i] + self.bins[i+1]) / 2
-            centers.append(center)
-        return centers
-
-    @property
-    def bin_widths(self) -> List:
-        return np.diff(self.bins)
-
-
-class ExtractHistData:
-    """
-    This class handles coffea output reading and creating HistInfo for HistogramPlotter
-    """
-    def __init__(self, histograms, normalize=False):
-        self.histograms = histograms
-        self.normalize = normalize
-        self.hist_info = {
-            "backgrounds": {},
-            "signals": {}
-        }
-
-    def _add_bins_info(self):
-        smpl = list(self.histograms.keys())[0]
-        hist = self.histograms[smpl]
-        self.hist_info["bins"] = hist.axes[0].edges
-        self.hist_info["ax_label"] = "NN_output"
-
-    # def _add_data_info(self, var, cat, data):
-    #     data_hist = None
-    #     for smpl in data[self.year]:
-    #         for hist in self.output["hists"][var][smpl].values():
-    #             if data_hist is not None:
-    #                 data_hist += hist
-    #             else:
-    #                 data_hist = hist
-    #     if cat in data_hist.axes[0]:
-    #         self.hist_info["data"] = data_hist[{"cat": cat}].values()
-    #         self.hist_info["has_plot"] = True
-
-    def _add_MC_BCs_info(self, MC_BCs):
-        for bc, bc_lst in MC_BCs.items():
-            mc_hist = None
-            for smpl in bc_lst:
-                if mc_hist is not None:
-                    mc_hist += self.histograms[smpl]
-                else:
-                    mc_hist = self.histograms[smpl].copy()
-            if self.normalize:
-                self.hist_info["backgrounds"][bc] = mc_hist.values()/np.sum(mc_hist.values()*np.diff(mc_hist.axes[0].edges))
-            else:
-                self.hist_info["backgrounds"][bc] = mc_hist.values()
-
-    def _add_signals_info(self, signals):
-        for signal in signals:
-            hist = self.histograms[signal]
-            if self.normalize:
-                self.hist_info["signals"][signal] = hist.values()/np.sum(hist.values()*np.diff(hist.axes[0].edges))
-            else:
-                self.hist_info["signals"][signal] = hist.values()
-
-    def extract_hist_info(self, data=None, MC_BCs=None, signals=None):
-        self._add_bins_info()
-        # if data is not None:
-        #     self._add_data_info(var, cat, data)
-        if MC_BCs is not None:
-            self._add_MC_BCs_info(MC_BCs)
-        if signals is not None:
-            self._add_signals_info(signals)
-
-        return HistInfo(**self.hist_info)
+from tttg.config import CATS, MASSES, NN_HIST_PLOT_DIR, NN_PLOT_BACKGROUNDS
+from tttg.data.features import PrepareFeaturesForTraning
+from tttg.histograms.extractor import ExtractHistData
+from tttg.histograms.nn_histograms import get_histograms
+from tttg.plotting.style import CMS_NAMED as cms_color
 
 
 class Plotter:
@@ -235,13 +121,33 @@ class Plotter:
         self.plot_datamc()
         # self.plot_ratio()
 
-        os.makedirs(f"plots", exist_ok=True)
+        out_dir = NN_HIST_PLOT_DIR / cat
+        out_dir.mkdir(parents=True, exist_ok=True)
         if normalized:
-            plt.savefig(f"plots/{cat}/{list(self.hist_info.signals.keys())[0]}_normalized.png", dpi=300, bbox_inches="tight")
+            plt.savefig(out_dir / f"{list(self.hist_info.signals.keys())[0]}_normalized.png", dpi=300, bbox_inches="tight")
         else:
-            plt.savefig(f"plots/{cat}/{list(self.hist_info.signals.keys())[0]}.png", dpi=300, bbox_inches="tight")
+            plt.savefig(out_dir / f"{list(self.hist_info.signals.keys())[0]}.png", dpi=300, bbox_inches="tight")
         # plt.show()
-        # plt.savefig(f"plots/{name}.pdf", bbox_inches="tight")
         plt.close()
 
-    
+
+def main():
+    import argparse
+
+    p = argparse.ArgumentParser(description="NN-output control plots (normalised) per category and mass.")
+    p.add_argument("--cats", nargs="+", choices=CATS, default=CATS)
+    p.add_argument("--masses", nargs="+", type=int, choices=MASSES, default=MASSES)
+    args = p.parse_args()
+
+    dataset = PrepareFeaturesForTraning()
+    for cat in args.cats:
+        for m in args.masses:
+            test_with_sample = dataset.get_test_with_sample(signal=f"Signal_{m}", cat=cat)
+            hists = get_histograms(m, test_with_sample, cat)
+            extractor = ExtractHistData(hists.copy(), normalize=True)
+            hist_data = extractor.extract_hist_info(MC_BCs=NN_PLOT_BACKGROUNDS, signals=[f"Signal_{m}"])
+            Plotter(hist_data).plot_histogram(normalized=True, cat=cat)
+
+
+if __name__ == "__main__":
+    main()
