@@ -153,10 +153,14 @@ class WeightManager:
     def luminosity(self, sample, **kwargs):
         return self.phase2_luminosity
     
-    def sum_genweight(self, sample, **kwargs):
-        return 2.0/self.output["metadata"][sample]["nevents"]
+    def sum_genweight(self, sample, use="test", **kwargs):
+        """1/N_gen per selected event, times 2 if only one half of the selected events is used.
+        use="test": one half only (old behaviour, factor 2). use="all": every selected event (2-fold
+        cross-training, nn_histograms.py) -> no factor 2."""
+        factor = {"test": 2.0, "all": 1.0}[use]
+        return factor/self.output["metadata"][sample]["nevents"]
 
-    def variation(self, sample, cat="noEFT", variation=NOMINAL_VARIATION, **kwargs):
+    def variation(self, sample, cat="noEFT", variation=NOMINAL_VARIATION, use="test", **kwargs):
         """Per-event scale/PDF systematic weight, expressed as a ratio to
         the nominal (MUF=1, MUR=1, PDF=247000) weight.
 
@@ -169,17 +173,19 @@ class WeightManager:
 
         `variation` must be one of the keys in WEIGHT_INDEX (this module).
         Defaults to the nominal weight itself (ratio == 1) if not given.
+        use="test": only the first half of the events (old behaviour); use="all": every event, in the original
+        order (the two halves = fold 0 and fold 1 of the 2-fold training, see features.py).
         """
         if "srMuR" in variation:
             w = self.output["variations"][cat][sample]["Weight"].value
-            length = len(w)
-            w = w[:int(length/2)]
             nominal_idx = WEIGHT_INDEX["Nominal_isrMuR_fsrMuR"]
         else:
             w = self.output["variations"][cat][sample]["LHEF"].value
-            length = len(w)
-            w = w[:int(length/2)]
             nominal_idx = WEIGHT_INDEX["Nominal"]
+        if use == "test":
+            w = w[:int(len(w)/2)]
+        elif use != "all":
+            raise ValueError(f"use must be 'test' or 'all', got {use!r}")
         idx = WEIGHT_INDEX[variation]
         return w[:, idx] / w[:, nominal_idx]
 

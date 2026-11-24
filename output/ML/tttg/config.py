@@ -61,7 +61,7 @@ BACKGROUNDS = {
     r"$tWZ$": ["tWZ"],
     r"$tXj~(X = Z,H)$": ["tZJets", "tHJets"],
     r"$tttj$": ["tttJets"],
-    r"V+jets":  ["WJets", "DYJets"] #
+    r"V+jets":  ["WJets"] # , "DYJets"
 }
 
 # Relative normalisation uncertainty on the backgrounds in the pyhf limits. Default for every
@@ -132,30 +132,39 @@ TRAIN_MIN_EVENTS = 100
 TRAIN_SEED = 0              # torch / numpy seed (initial weights, batch order, dropout)
 # Seed ensemble: N_SEEDS networks per (cat, mass) are trained with seeds TRAIN_SEED, TRAIN_SEED+1, ... and their
 # sigmoid outputs are averaged (tttg.training.train_eval.test and tttg.histograms.nn_histograms).
-N_SEEDS = 5
+N_SEEDS = 2
 
 
-def model_path(cat: str, mass, seed=None) -> Path:
-    """models/<cat>/Signal_<mass>.pth (a single model) or, with a seed, one ensemble member
-    models/<cat>/Signal_<mass>_seed<seed>.pth"""
-    suffix = "" if seed is None else f"_seed{seed}"
+N_FOLDS = 2   # 2-fold cross-training: fold f = networks trained on the OTHER half, applied to half f (see CHANGES.md)
+
+
+def model_path(cat: str, mass, seed=None, fold=None) -> Path:
+    """models/<cat>/Signal_<mass>.pth (a single model), with a seed one ensemble member
+    models/<cat>/Signal_<mass>_seed<seed>.pth, and with a fold the member of the 2-fold training
+    models/<cat>/Signal_<mass>_fold<fold>[_seed<seed>].pth"""
+    suffix = "" if fold is None else f"_fold{fold}"
+    suffix += "" if seed is None else f"_seed{seed}"
     return MODEL_DIR / cat / f"Signal_{mass}{suffix}.pth"
 
 
-def model_paths(cat: str, mass) -> list:
+def model_paths(cat: str, mass, fold=None) -> list:
     """Files of the NN ensemble of (cat, mass), ordered by seed.
 
-    If seed files (Signal_<mass>_seed<k>.pth) exist they are the ensemble; otherwise the old single model
-    Signal_<mass>.pth is returned (so models trained before the ensemble still work). Empty list: no model.
+    fold=None (old behaviour): Signal_<mass>_seed<k>.pth if they exist, otherwise the single model Signal_<mass>.pth.
+    fold=0/1 : only the members of that fold, Signal_<mass>_fold<fold>_seed<k>.pth (no fallback: a missing fold
+               model must be an error, never silently another fold's network). Empty list: no model.
     """
-    pattern = re.compile(rf"Signal_{mass}_seed(\d+)\.pth$")
+    tag = "" if fold is None else f"_fold{fold}"
+    pattern = re.compile(rf"Signal_{mass}{tag}_seed(\d+)\.pth$")
     members = []
-    for p in (MODEL_DIR / cat).glob(f"Signal_{mass}_seed*.pth"):
+    for p in (MODEL_DIR / cat).glob(f"Signal_{mass}{tag}_seed*.pth"):
         hit = pattern.search(p.name)
         if hit:
             members.append((int(hit.group(1)), p))
     if members:
         return [p for _, p in sorted(members)]
+    if fold is not None:
+        return []
     single = model_path(cat, mass)
     return [single] if single.exists() else []
 

@@ -120,7 +120,7 @@ class OptimizedTrainer:
         
         return avg_loss, auc, all_preds, all_labels
     
-    def train(self, epochs=EPOCHS, patience=10, mass="Signal_500", cat="noEFT", seed=None):
+    def train(self, epochs=EPOCHS, patience=10, mass="Signal_500", cat="noEFT", seed=None, fold=None):
         best_val_auc = 0
         best_epoch = 0
         best_model_state = None
@@ -170,7 +170,7 @@ class OptimizedTrainer:
         # Load best model and save it
         self.model.load_state_dict(best_model_state)
         # `mass` is the signal name, e.g. "Signal_500"
-        path = model_path(cat, mass.removeprefix("Signal_"), seed)     # seed given: ensemble member file
+        path = model_path(cat, mass.removeprefix("Signal_"), seed, fold)     # seed/fold given: ensemble member file
         path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.model.state_dict(), path)
         

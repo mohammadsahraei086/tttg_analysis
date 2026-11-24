@@ -108,3 +108,30 @@ and signal/background total weight equal; (c) the low-stat process is dropped by
 ## 6. Suggestion (not implemented)
 Given the large seed-to-seed spread of the limits, train several seeds per mass and keep the one with the best *validation*
 weighted AUC (not the test one). Easy to add on request.
+
+
+## 7. 2-fold cross-training: every selected event enters the limit
+
+**Why:** the limit used only the TEST half (weight `xsec*lumi*2/N_gen`), so every MC event counted twice as much and the
+background MC-stat error was sqrt(2) larger than necessary. Now the events are cut in two halves (part 0 = first
+`int(n/2)` events, part 1 = the rest) and two sets of networks are trained: **fold f is trained on the half that is NOT f and
+applied to half f**. Every event is scored by a network that never saw it, so ALL events fill the histograms with weight
+`xsec*lumi/N_gen` (no factor 2). Fold 0 is exactly the old setup (train = second half, test = first half).
+
+* `tttg/config.py`: `N_FOLDS`; `model_path(cat, m, seed, fold)` -> `Signal_<m>_fold<f>_seed<k>.pth`; `model_paths(cat, m, fold)`
+  returns only that fold's members (error if none, never another fold's net). `fold=None` keeps the old behaviour.
+* `tttg/data/features.py`: `concatenate_features / get_signal_background / get_training_data / get_test_with_sample` got `fold=0`
+  (default = old behaviour); scaler is fitted on the training half of that fold; new `get_folds_with_sample()`
+  -> `{sample: [X_part0, X_part1]}`, each part scaled with its own fold's scaler.
+* `tttg/data/weights.py`: `WeightManager.sum_genweight / variation` got `use="test"` (old: half, factor 2) or `use="all"`
+  (all events, factor 1).
+* `tttg/histograms/nn_histograms.py`: `get_histograms` takes `get_folds_with_sample()` output; part f is scored by the ensemble of
+  fold f, scores are put back in file order, weights with `use="all"`. The old input raises a clear error.
+* `tttg/training/trainer.py`, `train_eval.py`: `fold` passed through (model/plot/json names carry `_fold<f>`); new option
+  `--folds` (default `0 1`).
+* `limits/pyhf_limits.py`, `limits/root_files.py`, `histograms/plotter.py`: call `get_folds_with_sample` instead of `get_test_with_sample`.
+* NOT changed: the NN-loss weights (`physical_event_weight` still has the 2; it is a common factor that cancels in the
+  normalisation), `diagnostics/*` (they still work on the old fold-0 half; `yield_stat_from_extractor.py` and the scripts that call
+  `get_histograms` need the same one-line switch).
+* Old ensembles `Signal_<m>_seed<k>.pth` are fold-0 networks: `for f in models/*/Signal_*_seed*.pth; do mv "$f" "${f/_seed/_fold0_seed}"; done`
+  lets you reuse them and train only `--folds 1`.

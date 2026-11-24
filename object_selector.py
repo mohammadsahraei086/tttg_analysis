@@ -9,7 +9,7 @@ class ObjectSelector:
     def selected_electrons(self, ID="tight"):
 
         electrons = self.events.Electron        
-        eta_mask = (abs(electrons.Eta) < 0.3) & ((abs(electrons.Eta) < 1.4442) | (abs(electrons.Eta) > 1.566))
+        eta_mask = (abs(electrons.Eta) < 3) & ((abs(electrons.Eta) < 1.4442) | (abs(electrons.Eta) > 1.566))
  
         if ID == "tight":
             iso_mask = electrons.IsolationVarRhoCorr < 0.15

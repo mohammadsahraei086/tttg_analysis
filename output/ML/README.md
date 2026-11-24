@@ -52,7 +52,7 @@ ML/
 
 | # | step | command | reads | writes |
 |---|------|---------|-------|--------|
-| 1 | train + test NNs (cross-section weighted, see `CHANGES.md`) | `python -m tttg.training.train_eval [--cats ..] [--masses ..] [--scheme proc:0.5\|baseline\|proc:<a>] [--min-events N \| --keep-low-stat] [--seed S]` | coffea | `models/` (`.pth` + `.json` with the settings), `plots/training/` |
+| 1 | train + test NNs (cross-section weighted, see `CHANGES.md`) | `python -m tttg.training.train_eval [--cats ..] [--masses ..] [--scheme proc:0.5\|baseline\|proc:<a>] [--min-events N \| --keep-low-stat] [--seed S] [--folds 0 1]` | coffea | `models/<cat>/Signal_<m>_fold<f>_seed<k>.pth` (+ `.json`), `plots/training/` (2-fold, see `CHANGES.md` §7) |
 | 2 | NN-output control plots | `python -m tttg.histograms.plotter` | coffea, `models/` | `plots/nn_histograms/` |
 | 3 | pyhf limits on μ | `python -m tttg.limits.pyhf_limits [--bkg-mode norm\|uncorrelated] [--bkg-grouping total\|groups] [--no-sig-stat]` | coffea, `models/` | `results/limits_pyhf.json` |
 | 4 | ROOT files / Combine inputs | `python -m tttg.limits.root_files [--no-rebin] [--out DIR]` | coffea, `models/` | `output/` |

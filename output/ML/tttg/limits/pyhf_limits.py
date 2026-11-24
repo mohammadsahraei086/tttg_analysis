@@ -260,7 +260,7 @@ def run(out, verbose=False, grouping="total", use_sig_stat=True, cats=None, mass
             name = f"Signal_{m}"
             try:
                 t0 = time.perf_counter()
-                hists = get_histograms(m, dataset.get_test_with_sample(signal=name, cat=cat), cat)
+                hists = get_histograms(m, dataset.get_folds_with_sample(signal=name, cat=cat), cat)
                 hd = ExtractHistData(hists).extract_hist_info(MC_BCs=BACKGROUNDS, signals=[name])
                 t1 = time.perf_counter()
 

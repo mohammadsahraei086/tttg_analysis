@@ -52,7 +52,18 @@ class PrepareFeaturesForTraning:
         self.fitted = None 
         
 
-    def concatenate_features(self, signal, cat="noEFT"):
+    @staticmethod
+    def _split_halves(arr, fold):
+        """(train, test) arrays of one sample for `fold`. The events are cut in two halves in file order:
+        part 0 = first int(n/2) events, part 1 = the rest. Fold f is TESTED on part f and TRAINED on the other part.
+        fold=0 is exactly the old split (train = second half, test = first half)."""
+        h = int(len(arr) / 2)
+        parts = (arr[:h], arr[h:])
+        return parts[1 - fold].copy(), parts[fold].copy()
+
+    def concatenate_features(self, signal, cat="noEFT", fold=0):
+        if fold not in (0, 1):
+            raise ValueError(f"fold must be 0 or 1, got {fold!r}")
         train = {}
         test = {}
         np_features =  np.concatenate(
@@ -64,9 +75,7 @@ class PrepareFeaturesForTraning:
             ], 
             axis=1
         )
-        length = len(np_features)
-        train[signal] = np_features[int(length/2):].copy()
-        test[signal] = np_features[:int(length/2)].copy()
+        train[signal], test[signal] = self._split_halves(np_features, fold)
         
         for smpl in self.output["features"]["noEFT"]:
             if smpl.startswith("Signal_"):      # NEW: don't overwrite / pull in other signals
@@ -80,14 +89,12 @@ class PrepareFeaturesForTraning:
                 ], 
                 axis=1
             )
-            length = len(np_features)
-            train[smpl] = np_features[int(length/2):].copy()
-            test[smpl] = np_features[:int(length/2)].copy()
+            train[smpl], test[smpl] = self._split_halves(np_features, fold)
             
         return train, test
 
-    def get_signal_background(self, signal: str = "Signal_500", cat="noEFT"):
-        self.train, self.test = self.concatenate_features(signal, cat)        
+    def get_signal_background(self, signal: str = "Signal_500", cat="noEFT", fold=0):
+        self.train, self.test = self.concatenate_features(signal, cat, fold)
         X_train_raw, y_train_raw, sid_train_raw = self._prepare_data(self.train, signal)
         
         # Process test data  
@@ -107,8 +114,8 @@ class PrepareFeaturesForTraning:
         X_val = self.scaler.transform(X_val)
         X_test = self.scaler.transform(X_test)
 
-        self.fitted = (signal, cat)  
-        
+        self.fitted = (signal, cat, fold)      # the scaler is fitted on the TRAINING half of this fold
+
         return X_train, y_train, X_val, y_val, X_test, y_test
     
     def _prepare_data(self, np_features, signal):
@@ -133,17 +140,19 @@ class PrepareFeaturesForTraning:
         return X, y, sid
 
     def get_training_data(self, signal: str = "Signal_500", cat="noEFT",
-                          scheme: str = TRAIN_SCHEME, min_events: int = TRAIN_MIN_EVENTS) -> TrainingData:
+                          scheme: str = TRAIN_SCHEME, min_events: int = TRAIN_MIN_EVENTS,
+                          fold: int = 0) -> TrainingData:
         """Arrays + loss weights for the training.
 
         scheme    : 'baseline' (every event equal) or 'proc:<a>' (process total ~ yield^a), see weights.py
         min_events: background processes with fewer TRAINING events are removed from the train/val sets
                     (0 keeps all). They stay in the test set and in the limit histograms.
+        fold      : 0 or 1. Trained on the half that is NOT fold, tested on half `fold` (X_test / y_test / w_test).
         The scaler and the train/val split come from get_signal_background and do not depend on these two
         options, so a model trained with any setting is evaluated with the same scaler later.
         """
         parse_scheme(scheme)                                  # fail early on a typo
-        X_train, y_train, X_val, y_val, X_test, y_test = self.get_signal_background(signal, cat)
+        X_train, y_train, X_val, y_val, X_test, y_test = self.get_signal_background(signal, cat, fold)
         names = self.sample_names
         meta = self.output["metadata"]
 
@@ -203,16 +212,29 @@ class PrepareFeaturesForTraning:
 
         return train_loader, val_loader, test_loader
 
-    def get_test_with_sample(self, signal="Signal_500", cat="noEFT"):
-        self.train, self.test = self.concatenate_features(signal, cat)
-        if self.fitted != (signal, cat):        # scaler state also depends on cat
-            self.get_signal_background(signal, cat)
+    def get_test_with_sample(self, signal="Signal_500", cat="noEFT", fold=0):
+        """Scaled TEST half (part `fold`) of every sample. fold=0 = the old behaviour."""
+        self.train, self.test = self.concatenate_features(signal, cat, fold)
+        if self.fitted != (signal, cat, fold):        # scaler state also depends on cat and fold
+            self.get_signal_background(signal, cat, fold)
         return {s: self.scaler.transform(x) for s, x in self.test.items()}
+
+    def get_folds_with_sample(self, signal="Signal_500", cat="noEFT"):
+        """{sample: [X_part0, X_part1]}: EVERY selected event, scaled, split in the two halves (original order).
+
+        X_part_f is scaled with the scaler of fold f (fitted on the training half of fold f), because it is
+        scored by the networks of fold f (trained on the other half). Concatenating part 0 and part 1 gives the
+        events in file order, i.e. the order of the weight arrays used in nn_histograms.get_histograms."""
+        out = {}
+        for fold in (0, 1):
+            for s, x in self.get_test_with_sample(signal, cat, fold).items():
+                out.setdefault(s, [None, None])[fold] = x
+        return out
 
 
     def get_total_samples(self, signal="Signal_500", cat="noEFT"):
         self.train, self.test = self.concatenate_features(signal, cat)
-        if self.fitted != (signal, cat):
+        if self.fitted != (signal, cat, 0):
             self.get_signal_background(signal, cat)   # was hard-coded cat="noEFT"
         return {s: self.scaler.transform(np.vstack([self.test[s], self.train[s]]))
                 for s in self.test}

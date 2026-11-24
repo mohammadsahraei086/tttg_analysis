@@ -142,8 +142,8 @@ def main():
     dataset = PrepareFeaturesForTraning()
     for cat in args.cats:
         for m in args.masses:
-            test_with_sample = dataset.get_test_with_sample(signal=f"Signal_{m}", cat=cat)
-            hists = get_histograms(m, test_with_sample, cat)
+            folds_with_sample = dataset.get_folds_with_sample(signal=f"Signal_{m}", cat=cat)
+            hists = get_histograms(m, folds_with_sample, cat)
             extractor = ExtractHistData(hists.copy(), normalize=True)
             hist_data = extractor.extract_hist_info(MC_BCs=NN_PLOT_BACKGROUNDS, signals=[f"Signal_{m}"])
             Plotter(hist_data).plot_histogram(normalized=True, cat=cat)

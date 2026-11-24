@@ -144,7 +144,7 @@ if __name__ == "__main__":
     for cat in CATS:
         for m in MASSES:
             name = f"Signal_{m}"
-            hists = get_histograms(m, dataset.get_test_with_sample(signal=name, cat=cat), cat)
+            hists = get_histograms(m, dataset.get_folds_with_sample(signal=name, cat=cat), cat)
             hd = ExtractHistData(hists).extract_hist_info(MC_BCs=BACKGROUNDS, signals=[name])
 
             out_dir = os.path.join(BASE_DIR, cat, f"mT{m}", "output_root")
