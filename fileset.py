@@ -55,7 +55,7 @@ fileset_test = {
             },
         "metadata":{
             "xsec": 30335.0,
-			# "nevents": 3947009
+			"nevents": 3947009
         }
     },
 }
