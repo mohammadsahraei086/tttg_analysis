@@ -305,7 +305,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--bkg-grouping", choices=["total", "groups"], default="total",
+    ap.add_argument("--bkg-grouping", choices=["total", "groups"], default="groups",
                     help="total (default): all backgrounds summed into one pyhf sample. "
                          "groups: one pyhf sample per group in config.BACKGROUNDS")
     ap.add_argument("--no-sig-stat", action="store_true",

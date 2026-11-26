@@ -61,7 +61,7 @@ BACKGROUNDS = {
     r"$tWZ$": ["tWZ"],
     r"$tXj~(X = Z,H)$": ["tZJets", "tHJets"],
     r"$tttj$": ["tttJets"],
-    r"V+jets":  ["WJets"] # , "DYJets"
+    r"V+jets":  ["WJets", "DYJets"] # 
 }
 
 # Relative normalisation uncertainty on the backgrounds in the pyhf limits. Default for every

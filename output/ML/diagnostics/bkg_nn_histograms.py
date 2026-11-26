@@ -10,28 +10,35 @@ Run from the diagnostics folder ...
     python -m diagnostics.bkg_nn_histograms --cat noEFT --masses 500 800
 
 It mirrors the histogram step of the limit (tttg/histograms/nn_histograms.py) as closely as possible, so what you
-see here is what the limit is fed with, before the rebinning:
+see here is what the limit is fed with, before the rebinning. 2-FOLD CROSS-TRAINING version:
 
-  * TEST half of every sample, same scaler / features (PrepareFeaturesForTraning.get_test_with_sample)
-  * score = mean of the sigmoid outputs of the whole seed ensemble (config.model_paths), NOT the single
-    models/<cat>/Signal_<m>.pth that diagnostics/common.py loads
-  * nominal weight xsec * lumi * 2 / N_gen (WeightManager), config.NN_BINS bins on [0, 1)
+  * EVERY selected event of every sample (PrepareFeaturesForTraning.get_folds_with_sample): part 0 (first half) is
+    scored by the fold-0 networks, part 1 (second half) by the fold-1 networks, i.e. every event is scored by
+    networks that never saw it in training; same per-fold scaler / features as in the limit
+  * score = mean of the sigmoid outputs of the whole seed ensemble of that fold (config.model_paths(cat, m, fold))
+  * nominal weight xsec * lumi / N_gen (WeightManager, use="all": no factor 2), config.NN_BINS bins on [0, 1)
   * like hist.axis.Regular, a score >= 1.0 (float32 sigmoid saturates!) or NaN is NOT in any bin (it falls into the
     overflow and is lost for the limit); this is counted and reported per sample
   * the bins that pyhf finally uses (rebin(): merged from the high-NN end until the bkg MC-stat error <= 30 %) are
     drawn as dashed lines, if pyhf can be imported
 
 Prints, per (cat, mass):
-  1. per sample: test events, weight per event, yield, share of the background, effective events, mean score,
+  1. per sample: events, weight per event, yield, share of the background, effective events, mean score,
      share of the yield in the signal-like region (score >= --hi-cut), events lost in the overflow
   2. per NN bin: signal, total background, bkg MC-stat error, which sample dominates the bin and with how many MC events
-  3. warnings: low-statistics, high-weight samples that dominate a bin (these produce spikes / unstable limits),
-     samples that are in the test set but not in config.BACKGROUNDS (not used by the limit) and the other way round
-Saves (read-only for tttg/, only writes to plots/diagnostics and results/diagnostics):
-  plots/diagnostics/<cat>_Signal_<m>_bkg_yield_per_sample.png   weighted yield per bin, one panel per sample
-  plots/diagnostics/<cat>_Signal_<m>_bkg_occupancy.png          heat maps: share of each sample's yield per bin | raw MC events per bin
-  plots/diagnostics/<cat>_Signal_<m>_bkg_stack.png              stacked backgrounds (by config.BACKGROUNDS group) + signal
-  results/diagnostics/bkg_nn_hist_<cat>_Signal_<m>.json         all numbers (edges, yield, sum w^2, raw counts per sample)
+  3. warnings: low-statistics, high-weight samples that dominate a bin (these produce spikes / unstable limit),
+     samples that are in the event set but not in config.BACKGROUNDS (not used by the limit) and the other way round
+  4. fold consistency (NEW): the two folds use different networks and their histograms are summed, so the score
+     distributions of fold 0 and fold 1 must agree (mean score and KS test per sample)
+  5. comparison with the earlier single-split result (NEW, --no-compare switches it off): per NN bin background,
+     MC-stat error and raw MC events of results/diagnostics/bkg_nn_hist_<cat>_Signal_<m>.json (written by the old
+     version of this script) next to the 2-fold numbers
+Saves (read-only for tttg/, only writes to plots/diagnostics and results/diagnostics). The file names carry the suffix
+_2fold so that the results of the old single-split version are NOT overwritten (they are needed for item 5):
+  plots/diagnostics/<cat>_Signal_<m>_2fold_bkg_yield_per_sample.png   weighted yield per bin, one panel per sample
+  plots/diagnostics/<cat>_Signal_<m>_2fold_bkg_occupancy.png          heat maps: share of each sample's yield per bin | raw MC events per bin
+  plots/diagnostics/<cat>_Signal_<m>_2fold_bkg_stack.png              stacked backgrounds (by config.BACKGROUNDS group) + signal
+  results/diagnostics/bkg_nn_hist_<cat>_Signal_<m>_2fold.json         all numbers (edges, yield, sum w^2, raw counts per sample, fold check)
 """
 import argparse
 import json
@@ -59,41 +66,57 @@ CHUNK = 65536
 
 
 # ----------------------------------------------------------------------------- loading (needs torch + coffea)
-def ensemble_scores(cat, mass, scaled):
-    """NN score of every TEST event: mean sigmoid output of the seed ensemble, exactly as in nn_histograms.py.
-    Returns (scores per sample, list of model files used)."""
+def ensemble_scores(cat, mass, folded):
+    """NN score of EVERY selected event, as in nn_histograms.get_histograms (2-fold cross-training).
+
+    folded: {sample: [X_part0, X_part1]} from PrepareFeaturesForTraning.get_folds_with_sample. Part f is scored by
+    the ensemble of fold f (mean sigmoid output of its seed members); the two parts are put back in file order.
+    Returns (scores {sample: array in file order}, fold_scores {sample: [part0 scores, part1 scores]},
+    model files {fold: [paths]})."""
     import torch
     from tttg.training.model import OptimizedHEPClassifier
 
-    paths = model_paths(cat, mass)
-    if not paths:
-        raise FileNotFoundError(f"no trained model for {cat} Signal_{mass} (run tttg.training.train_eval)")
-    ncol = next(iter(scaled.values())).shape[1]
-    models = []
-    for p in paths:
-        m = OptimizedHEPClassifier(input_dim=ncol)
-        m.load_state_dict(torch.load(p, map_location="cpu", weights_only=True))
-        models.append(m.eval())
-    scores = {}
+    ncol = next(iter(folded.values()))[0].shape[1]
+    ensembles, paths = [], {}
+    for fold in (0, 1):
+        files = model_paths(cat, mass, fold=fold)
+        if not files:
+            raise FileNotFoundError(f"no trained model for {cat} Signal_{mass} fold {fold} "
+                                    f"(run tttg.training.train_eval, both folds)")
+        members = []
+        for p in files:
+            m = OptimizedHEPClassifier(input_dim=ncol)
+            m.load_state_dict(torch.load(p, map_location="cpu", weights_only=True))
+            members.append(m.eval())
+        ensembles.append(members)
+        paths[fold] = files
+
+    def score(x, members):
+        x = np.asarray(x, dtype=np.float32)
+        out = []
+        for i in range(0, len(x), CHUNK):
+            t = torch.from_numpy(x[i:i + CHUNK])
+            out.append(torch.stack([torch.sigmoid(m(t)).flatten() for m in members]).mean(dim=0).numpy())
+        return np.concatenate(out) if out else np.zeros(0, dtype=np.float32)
+
+    scores, fold_scores = {}, {}
     with torch.no_grad():
-        for s, x in scaled.items():
-            x = np.asarray(x, dtype=np.float32)
-            out = []
-            for i in range(0, len(x), CHUNK):
-                t = torch.from_numpy(x[i:i + CHUNK])
-                out.append(torch.stack([torch.sigmoid(m(t)).flatten() for m in models]).mean(dim=0).numpy())
-            scores[s] = np.concatenate(out) if out else np.zeros(0, dtype=np.float32)
-    return scores, paths
+        for s, parts in folded.items():
+            fold_scores[s] = [score(parts[f], ensembles[f]) for f in (0, 1)]    # part f <- networks of fold f
+            scores[s] = np.concatenate(fold_scores[s])                          # part 0, then part 1 = file order
+    return scores, fold_scores, paths
 
 
 def nominal_weights(wm, cat, scores):
-    """Per-event nominal weight of every test event, as used to fill the limit histograms."""
+    """Per-event nominal weight of every event (use="all": xsec * lumi / N_gen, no factor 2), as used to fill the limit
+    histograms in nn_histograms.get_histograms. A length mismatch between weights and scores raises an error."""
     out = {}
     for s, sc in scores.items():
         if s.startswith("Signal_"):
-            w = wm.get_weights(s, "xsec", "luminosity", "sum_genweight", "variation", cat=cat, variation="Nominal")
+            w = wm.get_weights(s, "xsec", "luminosity", "sum_genweight", "variation", cat=cat, variation="Nominal",
+                               use="all")
         else:
-            w = wm.get_weights(s, "xsec", "luminosity", "sum_genweight")
+            w = wm.get_weights(s, "xsec", "luminosity", "sum_genweight", use="all")
         w = np.broadcast_to(np.asarray(w, dtype=float), (len(sc),)).copy()
         out[s] = w
     return out
@@ -201,8 +224,8 @@ def print_report(res, min_raw):
     order = sorted(res["samples"], key=lambda s: -res["samples"][s]["yield_all"])
     hc = res["hi_cut"]
 
-    print(f"\n== 1. per background sample (TEST half, ensemble score, L = {LUMINOSITY} fb^-1)")
-    print(f"  {'sample':<14}{'group':<9}{'N_test':>9}{'w/event':>11}{'w_max':>10}{'yield':>11}{'%bkg':>7}"
+    print(f"\n== 1. per background sample (ALL events, 2-fold ensemble score, L = {LUMINOSITY} fb^-1)")
+    print(f"  {'sample':<14}{'group':<9}{'N_evt':>9}{'w/event':>11}{'w_max':>10}{'yield':>11}{'%bkg':>7}"
           f"{'N_eff':>9}{'<score>':>9}{f'%y>={hc:g}':>9}{'over/NaN':>10}{'lost y':>9}")
     for s in order:
         d = res["samples"][s]
@@ -243,12 +266,73 @@ def print_report(res, min_raw):
               f"(signal yield lost {S['w_lost']:.3g} of {S['yield_all']:.3g})")
     if res["not_in_limit"]:
         n_warn += 1
-        print(f"  in the test set but NOT in config.BACKGROUNDS (not used by the limit): {', '.join(res['not_in_limit'])}")
+        print(f"  in the event set but NOT in config.BACKGROUNDS (not used by the limit): {', '.join(res['not_in_limit'])}")
     if res["missing_in_test"]:
         n_warn += 1
-        print(f"  in config.BACKGROUNDS but NOT in the test set: {', '.join(res['missing_in_test'])}")
+        print(f"  in config.BACKGROUNDS but NOT in the event set: {', '.join(res['missing_in_test'])}")
     if not n_warn:
         print("  none")
+
+
+def fold_check(fold_scores, res, n_top=6):
+    """Do the two folds agree? Their histograms are summed in the limit although they come from different networks.
+    Per sample (signal + the n_top backgrounds with the largest yield): number of events, mean score and
+    Kolmogorov-Smirnov distance / p-value between the score distribution of part 0 (fold-0 networks) and part 1
+    (fold-1 networks). Both parts are statistically equivalent samples, so a small p-value (< ~0.01) for a sample with
+    many events means the two ensembles are not equivalent (e.g. one fold trained badly). Unweighted, on raw events."""
+    from scipy.stats import ks_2samp
+    order = sorted(res["in_limit"], key=lambda s: -res["samples"][s]["yield_all"])[:n_top]
+    out = {}
+    for s in [res["signal"]] + order:
+        a, b = (np.asarray(x, dtype=float) for x in fold_scores[s])
+        a, b = a[~np.isnan(a)], b[~np.isnan(b)]
+        if len(a) < 2 or len(b) < 2:
+            continue
+        ks = ks_2samp(a, b)
+        out[s] = {"n0": int(len(a)), "n1": int(len(b)), "mean0": float(a.mean()), "mean1": float(b.mean()),
+                  "ks": float(ks.statistic), "p": float(ks.pvalue)}
+    return out
+
+
+def print_fold_check(fc):
+    print("\n== 4. fold consistency (score distribution of part 0 [fold-0 networks] vs part 1 [fold-1 networks])")
+    print(f"  {'sample':<14}{'N_part0':>9}{'N_part1':>9}{'<score>0':>10}{'<score>1':>10}{'KS dist':>9}{'KS p':>9}")
+    for s, d in fc.items():
+        flag = "   <-- folds differ?" if d["p"] < 0.01 and min(d["n0"], d["n1"]) >= 200 else ""
+        print(f"  {s:<14}{d['n0']:>9d}{d['n1']:>9d}{d['mean0']:>10.3f}{d['mean1']:>10.3f}{d['ks']:>9.3f}{d['p']:>9.3f}{flag}")
+
+
+def print_compare_old(res, cat, signal, min_raw):
+    """Per NN bin: background, MC-stat error and raw MC events of the OLD single-split result (json written by the old
+    version of this script, same bins) next to the 2-fold numbers."""
+    old_path = DIAG_RESULTS_DIR / f"bkg_nn_hist_{cat}_{signal}.json"
+    print(f"\n== 5. comparison with the single-split result ({old_path.name})")
+    if not old_path.exists():
+        print("  not found (run the old version of this script first, or use --no-compare)")
+        return
+    with open(old_path) as f:
+        old = json.load(f)
+    if len(old["edges"]) != len(res["edges"]) or not np.allclose(old["edges"], res["edges"]):
+        print("  the old result has other NN bins -> not comparable (use the same --bins)")
+        return
+    oB, oV = np.asarray(old["bkg_total"], dtype=float), np.asarray(old["bkg_var"], dtype=float)
+    oN = np.sum([old["samples"][s]["nraw"] for s in old["in_limit"]], axis=0)
+    nB, nV = res["bkg_total"], res["bkg_var"]
+    nN = np.sum([res["samples"][s]["nraw"] for s in res["in_limit"]], axis=0)
+    err = lambda B, V: np.where(B > 0, np.sqrt(V) / np.where(B > 0, B, 1.0), np.inf)
+    oE, nE = err(oB, oV), err(nB, nV)
+    print(f"  {'bin':>3} {'range':<13}{'bkg old':>11}{'bkg new':>11}{'MCstat old':>12}{'MCstat new':>12}"
+          f"{'N_raw old':>11}{'N_raw new':>11}")
+    for i in range(len(res["edges"]) - 1):
+        lo, hi = res["edges"][i], res["edges"][i + 1]
+        flag = "  <-- still < %d MC events" % min_raw if 0 < nN[i] < min_raw else ""
+        print(f"  {i:>3} [{lo:.3f},{hi:.3f}){oB[i]:>11.4g}{nB[i]:>11.4g}{oE[i]:>12.2f}{nE[i]:>12.2f}"
+              f"{int(oN[i]):>11d}{int(nN[i]):>11d}{flag}")
+    print(f"  total bkg: old {oB.sum():.5g}  new {nB.sum():.5g}  (expected equal within MC fluctuations: "
+          f"same physics, twice the events)")
+    old_m, new_m = old.get("merged_edges"), res.get("merged_edges")
+    if old_m and new_m:
+        print(f"  pyhf bins after rebin(): old {len(old_m) - 1}  ->  new {len(new_m) - 1}")
 
 
 # ----------------------------------------------------------------------------- plots
@@ -372,15 +456,21 @@ def save_json(res, path):
 
 
 # ----------------------------------------------------------------------------- main
-def run_one(ds, wm, cat, mass, nbins, hi_cut, min_raw, plots=True):
+def run_one(ds, wm, cat, mass, nbins, hi_cut, min_raw, plots=True, compare=True):
     signal = f"Signal_{mass}"
-    scaled = ds.get_test_with_sample(signal=signal, cat=cat)
-    scores, paths = ensemble_scores(cat, mass, scaled)
+    folded = ds.get_folds_with_sample(signal=signal, cat=cat)
+    scores, fold_scores, paths = ensemble_scores(cat, mass, folded)
     weights = nominal_weights(wm, cat, scores)
-    print(f"\n{'=' * 100}\n{cat}  {signal}: ensemble of {len(paths)} model(s): " + ", ".join(p.name for p in paths))
+    print(f"\n{'=' * 100}\n{cat}  {signal}: 2-fold cross-training")
+    for fold, files in paths.items():
+        print(f"  fold {fold} (scores part {fold}): ensemble of {len(files)} model(s): " + ", ".join(p.name for p in files))
     res = analyse(scores, weights, signal, np.linspace(0.0, 1.0, nbins + 1), hi_cut=hi_cut)
+    res["fold_check"] = fold_check(fold_scores, res)
     print_report(res, min_raw)
-    stem = f"{cat}_{signal}"
+    print_fold_check(res["fold_check"])
+    if compare:
+        print_compare_old(res, cat, signal, min_raw)
+    stem = f"{cat}_{signal}_2fold"
     save_json(res, DIAG_RESULTS_DIR / f"bkg_nn_hist_{stem}.json")
     if plots:
         DIAG_PLOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -404,6 +494,8 @@ def main():
     p.add_argument("--min-raw", type=int, default=10,
                    help="bins with fewer MC events than this are flagged in the plots / warnings (default 10)")
     p.add_argument("--no-plots", action="store_true", help="tables and json only")
+    p.add_argument("--no-compare", action="store_true",
+                   help="do not compare with the single-split json of the old version of this script")
     a = p.parse_args()
 
     from tttg.data.features import PrepareFeaturesForTraning
@@ -411,7 +503,7 @@ def main():
 
     ds, wm = PrepareFeaturesForTraning(), WeightManager()
     for m in a.masses:
-        run_one(ds, wm, a.cat, m, a.bins, a.hi_cut, a.min_raw, plots=not a.no_plots)
+        run_one(ds, wm, a.cat, m, a.bins, a.hi_cut, a.min_raw, plots=not a.no_plots, compare=not a.no_compare)
 
 
 if __name__ == "__main__":
