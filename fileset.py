@@ -18,7 +18,7 @@ fileset_test = {
 	# 		"nevents": 1000000
  #        }
  #    },
-    "tt":{
+    "tt_loose_cut":{
         "files":{
             "/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_0.root":"Delphes",
 			"/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_1.root":"Delphes",
@@ -26,18 +26,36 @@ fileset_test = {
             },
         "metadata":{
             "xsec": 59488.0,
-			"nevents": 1185906
+			# "nevents": 1185906
         }
     },
     "tt_tight_cut":{
         "files":{
-            "/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_0_tight_cut.root":"Delphes",
+            # "/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_0_tight_cut.root":"Delphes",
 			"/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_1_tight_cut.root":"Delphes",
             "/data/shared02/ROOT_Samples/Backgrounds/tt_1lep_2_tight_cut.root":"Delphes"
             },
         "metadata":{
             "xsec": 38201.898,
-			"nevents": 1213983
+			# "nevents": 1213983
+        }
+    },
+    "tt_2lep":{
+        "files":{
+            "/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_0.root":"Delphes",
+			"/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_1.root":"Delphes",
+            "/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_2.root":"Delphes",
+            "/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_3.root":"Delphes",
+			"/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_4.root":"Delphes",
+            "/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_5.root":"Delphes",
+			"/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_6.root":"Delphes",
+            "/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_7.root":"Delphes",
+			"/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_8.root":"Delphes",
+			"/data/shared02/ROOT_Samples/Backgrounds/tt_2lep_9.root":"Delphes",
+            },
+        "metadata":{
+            "xsec": 30335.0,
+			# "nevents": 3947009
         }
     },
 }
