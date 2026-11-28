@@ -80,6 +80,8 @@ class PrepareFeaturesForTraning:
         for smpl in self.output["features"]["noEFT"]:
             if smpl.startswith("Signal_"):      # NEW: don't overwrite / pull in other signals
                 continue
+            if smpl == "tt":
+                continue
             np_features =  np.concatenate(
                 [
                     self.output["features"]["noEFT"][smpl][var].value.astype(np.float32) 

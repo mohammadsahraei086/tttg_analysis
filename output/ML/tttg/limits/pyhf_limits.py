@@ -319,8 +319,8 @@ if __name__ == "__main__":
     ap.add_argument("--skip-existing", action="store_true",
                     help="do not recompute (cat, mass) pairs that are already in the json (resume after a crash)")
     ap.add_argument("--mu-lo", type=float, default=0.01, help="first mu of the CLs scan (default 0.01)")
-    ap.add_argument("--mu-hi", type=float, default=100, help="last mu of the CLs scan (default 100)")
-    ap.add_argument("--n-scan", type=int, default=100, help="number of mu points of the scan (default 100)")
+    ap.add_argument("--mu-hi", type=float, default=50, help="last mu of the CLs scan (default 100)")
+    ap.add_argument("--n-scan", type=int, default=50, help="number of mu points of the scan (default 100)")
     ap.add_argument("--out", default=None,
                     help="output json (default: results/limits_pyhf.json for --bkg-grouping total, "
                          "results/limits_pyhf_groups.json for groups). Entries of other (cat, mass) pairs "

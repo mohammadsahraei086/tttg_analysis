@@ -52,7 +52,7 @@ BACKGROUNDS_old = {
 }
 
 BACKGROUNDS = {
-    r"$t\bar{t}$": ["tt"],
+    r"$t\bar{t}$": ["tt_loose_cut", 'tt_tight_cut', "tt_2lep"],
     r"$VV+VVV+VH$": ["WZ", "WW", "ZZ", "WWW", "HW"],
     r"$t\bar{t}H$": ["ttH"],
     r"$t\bar{t}Z$": ["ttZ"],
@@ -132,7 +132,7 @@ TRAIN_MIN_EVENTS = 100
 TRAIN_SEED = 0              # torch / numpy seed (initial weights, batch order, dropout)
 # Seed ensemble: N_SEEDS networks per (cat, mass) are trained with seeds TRAIN_SEED, TRAIN_SEED+1, ... and their
 # sigmoid outputs are averaged (tttg.training.train_eval.test and tttg.histograms.nn_histograms).
-N_SEEDS = 2
+N_SEEDS = 1
 
 
 N_FOLDS = 2   # 2-fold cross-training: fold f = networks trained on the OTHER half, applied to half f (see CHANGES.md)
